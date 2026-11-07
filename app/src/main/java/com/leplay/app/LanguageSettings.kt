@@ -368,6 +368,8 @@ object I18n {
 
     private val TRANSLATIONS: Map<String, Map<String, String>> = mapOf(
         "en" to mapOf(
+            "hide_ui" to "Hide interface",
+            "show_ui" to "Show interface",
             "tab_home" to "Home",
             "tab_music" to "Music",
             "tab_shorts" to "Shorts",
@@ -2306,6 +2308,8 @@ object I18n {
             "search_hint" to "Search YouTube",
         ),
         "id" to mapOf(
+            "hide_ui" to "Sembunyikan tampilan",
+            "show_ui" to "Tampilkan tampilan",
             "tab_home" to "Beranda",
             "tab_music" to "Musik",
             "tab_shorts" to "Shorts",

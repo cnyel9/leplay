@@ -12,8 +12,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.snap
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
@@ -59,6 +61,8 @@ import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.rounded.ThumbDown
 import androidx.compose.material.icons.rounded.ThumbUp
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
@@ -852,7 +856,20 @@ fun ShortsScreen(
                             glass = glass,
                         )
 
-                        ShortsDetails(
+                        AnimatedVisibility(
+                            visible = !ShortsSettings.cleanMode,
+                            enter = if (GlassSettings.liteMode) {
+                                fadeIn(snap())
+                            } else {
+                                fadeIn(tween(220, Motion.Emphasized)) +
+                                    slideInVertically(tween(Motion.PageRiseMs, Motion.Emphasized)) { it / 3 }
+                            },
+                            exit = if (GlassSettings.liteMode) {
+                                fadeOut(snap())
+                            } else {
+                                fadeOut(tween(160, Motion.Emphasized)) +
+                                    slideOutVertically(tween(280, Motion.Emphasized)) { it / 3 }
+                            },
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
                                 .padding(
@@ -860,6 +877,9 @@ fun ShortsScreen(
                                     end = 82.dp,
                                     bottom = bottomInset + 20.dp,
                                 ),
+                        ) {
+                        ShortsDetails(
+                            modifier = Modifier,
                             item = item,
                             info = info,
                             subscribed = subscribed,
@@ -892,6 +912,7 @@ fun ShortsScreen(
                                 }
                             },
                         )
+                        }
 
 
                         if (duration > 0) {
@@ -1112,32 +1133,94 @@ private fun ShortsRail(
     backdrop: Backdrop,
     glass: GlassSpec,
 ) {
+    val cleanMode = ShortsSettings.cleanMode
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        ShortsAction(
-            icon = Icons.Rounded.ThumbUp,
-            label = countLabel(likeCount, I18n.t("like", "Like")),
-            tint = if (liked) Color(0xFFFF2D55) else Color.White,
-            active = liked,
-            backdrop = backdrop,
-            glass = glass,
-            onClick = onLike,
-        )
-        ShortsAction(
-            icon = Icons.Rounded.ThumbDown,
-            label = countLabel(dislikes, I18n.t("dislike", "Dislike")),
-            tint = if (disliked) Color(0xFFFF2D55) else Color.White,
-            active = disliked,
-            backdrop = backdrop,
-            glass = glass,
-            onClick = onDislike,
-        )
+        Box(
+            Modifier
+                .size(38.dp)
+                .pressable(onClick = { ShortsSettings.set(!cleanMode) })
+                .clip(CircleShape)
+                .liquidGlass(backdrop, glass),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (cleanMode) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff,
+                contentDescription = if (cleanMode) {
+                    I18n.t("show_ui", "Show interface")
+                } else {
+                    I18n.t("hide_ui", "Hide interface")
+                },
+                tint = Color.White,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        AnimatedVisibility(
+            visible = !cleanMode,
+            enter = if (GlassSettings.liteMode) {
+                fadeIn(snap())
+            } else {
+                fadeIn(tween(180, Motion.Emphasized)) +
+                    expandVertically(tween(260, Motion.Emphasized), expandFrom = Alignment.Bottom)
+            },
+            exit = if (GlassSettings.liteMode) {
+                fadeOut(snap())
+            } else {
+                fadeOut(tween(160, Motion.Emphasized)) +
+                    shrinkVertically(tween(260, Motion.Emphasized), shrinkTowards = Alignment.Bottom)
+            },
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ShortsAction(
+                    icon = Icons.Rounded.ThumbUp,
+                    label = countLabel(likeCount, I18n.t("like", "Like")),
+                    tint = if (liked) Color(0xFFFF2D55) else Color.White,
+                    active = liked,
+                    backdrop = backdrop,
+                    glass = glass,
+                    onClick = onLike,
+                )
+                ShortsAction(
+                    icon = Icons.Rounded.ThumbDown,
+                    label = countLabel(dislikes, I18n.t("dislike", "Dislike")),
+                    tint = if (disliked) Color(0xFFFF2D55) else Color.White,
+                    active = disliked,
+                    backdrop = backdrop,
+                    glass = glass,
+                    onClick = onDislike,
+                )
+            }
+        }
         ShortsAction(Icons.Rounded.Comment, I18n.t("comments", "Comments"), backdrop = backdrop, glass = glass, onClick = onComments)
-        ShortsAction(Icons.Rounded.Download, I18n.t("download", "Download"), backdrop = backdrop, glass = glass, onClick = onDownload)
-        ShortsAction(Icons.Rounded.Share, I18n.t("share", "Share"), backdrop = backdrop, glass = glass, onClick = onShare)
+        AnimatedVisibility(
+            visible = !cleanMode,
+            enter = if (GlassSettings.liteMode) {
+                fadeIn(snap())
+            } else {
+                fadeIn(tween(180, Motion.Emphasized)) +
+                    expandVertically(tween(260, Motion.Emphasized), expandFrom = Alignment.Bottom)
+            },
+            exit = if (GlassSettings.liteMode) {
+                fadeOut(snap())
+            } else {
+                fadeOut(tween(160, Motion.Emphasized)) +
+                    shrinkVertically(tween(260, Motion.Emphasized), shrinkTowards = Alignment.Bottom)
+            },
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ShortsAction(Icons.Rounded.Download, I18n.t("download", "Download"), backdrop = backdrop, glass = glass, onClick = onDownload)
+                ShortsAction(Icons.Rounded.Share, I18n.t("share", "Share"), backdrop = backdrop, glass = glass, onClick = onShare)
+            }
+        }
     }
 }
 

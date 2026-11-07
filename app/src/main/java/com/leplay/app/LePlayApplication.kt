@@ -46,6 +46,7 @@ class LePlayApplication : Application(), ImageLoaderFactory {
         PlayerControlSettings.init(this)
         PipSettings.init(this)
         MiniPlayerSettings.init(this)
+        ShortsSettings.init(this)
         ResumeStore.init(this)
         Account.init(this)
         SponsorBlock.init(this)

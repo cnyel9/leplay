@@ -8,11 +8,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +22,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -637,7 +636,8 @@ object LiveChatFeed {
  * Bottom-anchored shell for the chat panels, with the same mechanics as the
  * comments panel: it opens at the shared partial height under the player
  * header, drags between partial and full height, settles on release, and
- * dismisses from the scrim, the back button or a hard downward fling.
+ * dismisses from the close button, back press, or a downward fling. The
+ * video behind the panel is never dimmed.
  */
 @Composable
 private fun ChatPanelScaffold(
@@ -680,16 +680,6 @@ private fun ChatPanelScaffold(
             }
         }
 
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.4f * (1f - slide.value)))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = { close() },
-                ),
-        )
         val shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         Column(
             Modifier
@@ -729,12 +719,41 @@ fun LiveChatPanel(
     onSignIn: () -> Unit,
     onClose: () -> Unit,
 ) {
+    ChatPanelScaffold(partialTop = partialTop, onClose = onClose) { close ->
+        LiveChatContent(state = state, onSignIn = onSignIn, onClose = close)
+    }
+}
+
+@Composable
+fun LiveChatSideColumn(
+    state: LiveChatState,
+    onSignIn: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .fillMaxHeight()
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .imePadding(),
+    ) {
+        LiveChatContent(state = state, onSignIn = onSignIn, onClose = onClose, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+fun LiveChatContent(
+    state: LiveChatState,
+    onSignIn: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val c = MaterialTheme.colorScheme
     val list = rememberLazyListState()
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) runCatching { list.animateScrollToItem(state.messages.lastIndex) }
     }
-    ChatPanelScaffold(partialTop = partialTop, onClose = onClose) { close ->
+    Column(modifier) {
         Row(
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -749,7 +768,7 @@ fun LiveChatPanel(
             Text(I18n.t("live_chat", "Live chat"), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
             Spacer(Modifier.weight(1f))
             Box(
-                Modifier.size(42.dp).pressable(onClick = close),
+                Modifier.size(42.dp).pressable(onClick = onClose),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -938,6 +957,35 @@ fun ChatReplayPanel(
     partialTop: Dp,
     onClose: () -> Unit,
 ) {
+    ChatPanelScaffold(partialTop = partialTop, onClose = onClose) { close ->
+        ChatReplayContent(state = state, positionMs = positionMs, onClose = close)
+    }
+}
+
+@Composable
+fun ChatReplaySideColumn(
+    state: ChatReplayState,
+    positionMs: Long,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .fillMaxHeight()
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .imePadding(),
+    ) {
+        ChatReplayContent(state = state, positionMs = positionMs, onClose = onClose, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+fun ChatReplayContent(
+    state: ChatReplayState,
+    positionMs: Long,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val c = MaterialTheme.colorScheme
     val list = rememberLazyListState()
     val visible = state.messages.filter { (it.offsetMs ?: 0L) <= positionMs }
@@ -948,7 +996,7 @@ fun ChatReplayPanel(
             runCatching { list.animateScrollToItem(visible.lastIndex) }
         }
     }
-    ChatPanelScaffold(partialTop = partialTop, onClose = onClose) { close ->
+    Column(modifier) {
         Row(
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -956,7 +1004,7 @@ fun ChatReplayPanel(
             Text(I18n.t("chat_replay", "Chat replay"), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
             Spacer(Modifier.weight(1f))
             Box(
-                Modifier.size(42.dp).pressable(onClick = close),
+                Modifier.size(42.dp).pressable(onClick = onClose),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

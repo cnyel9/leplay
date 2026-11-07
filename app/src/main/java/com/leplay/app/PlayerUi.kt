@@ -113,7 +113,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -191,19 +190,6 @@ fun PlayerScreen(
     val item = state.current ?: return
     val isLiveStream = state.details?.item?.isLive == true || item.isLive
     val hasChatReplay = !isLiveStream && state.chatReplay.available
-    LaunchedEffect(state.sheet, item.id, isLiveStream) {
-        if (state.sheet == PlayerSheet.Comments && isLiveStream) {
-            val channelHint = state.details?.item?.channelUrl?.substringAfterLast('/')?.takeIf { it.startsWith("UC") }
-                ?: state.accountState?.channelId
-            state.liveChat.start(item.id, channelHint)
-        } else {
-            state.liveChat.stop()
-        }
-    }
-    DisposableEffect(Unit) {
-        onDispose { state.liveChat.stop() }
-    }
-
 
     val interactive = state.expanded || morph.dragging
     val showDetails by remember { derivedStateOf { state.expanded || morph.dragging || morph.progress.value > DetailsFadeStart } }

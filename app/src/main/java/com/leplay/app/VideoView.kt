@@ -30,6 +30,7 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -44,6 +45,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -61,6 +63,7 @@ import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.BrightnessMedium
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Comment
 import androidx.compose.material.icons.rounded.CropFree
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -89,6 +92,7 @@ import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import com.kyant.backdrop.Backdrop
@@ -580,6 +584,15 @@ fun VideoContent(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
+                        if (state.sheet != PlayerSheet.Comments &&
+                            (state.details?.item?.isLive == true || state.current?.isLive == true || state.chatReplay.available)
+                        ) {
+                            GlassButton(Icons.Rounded.Comment, I18n.t("live_chat", "Live chat"), enabled, size = 32.dp, iconSize = 20.dp, backdrop = videoBackdrop) {
+                                touched()
+                                state.sheet = PlayerSheet.Comments
+                            }
+                            Spacer(Modifier.width(6.dp))
+                        }
                     } else {
                         GlassButton(Icons.Rounded.KeyboardArrowDown, I18n.t("minimize", "Minimize"), enabled, size = 32.dp, iconSize = 22.dp, backdrop = videoBackdrop) {
                             touched()
@@ -936,14 +949,47 @@ fun Modifier.aspectFit(aspect: Float, cover: Boolean = false) = layout { measura
 
 
 @Composable
-fun FullscreenPlayer(state: PlayerState, onExit: () -> Unit) {
-    VideoContent(
-        state = state,
-        fullscreen = true,
-        onCollapse = onExit,
-        onToggleFullscreen = onExit,
-        modifier = Modifier.fillMaxSize(),
-    )
+fun FullscreenPlayer(state: PlayerState, onExit: () -> Unit, onSignIn: () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
+        val item = state.current
+        val isLive = state.details?.item?.isLive == true || item?.isLive == true
+        val hasChatReplay = !isLive && state.chatReplay.available
+        val chatAvailable = isLive || hasChatReplay
+        val landscape = maxWidth > maxHeight
+        val chatOpen = landscape && chatAvailable && state.sheet == PlayerSheet.Comments
+        val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+        val typing = chatOpen && imeBottom > 0
+        val targetWidth = when {
+            !chatOpen -> 0.dp
+            typing -> minOf(480.dp, maxWidth * 0.55f)
+            else -> 320.dp
+        }
+        val colW by animateDpAsState(
+            targetValue = targetWidth,
+            animationSpec = if (rememberReducedMotion()) tween(0) else spring(dampingRatio = 0.86f, stiffness = 550f),
+            label = "chatColumnWidth",
+        )
+        Row(Modifier.fillMaxSize()) {
+            VideoContent(
+                state = state,
+                fullscreen = true,
+                onCollapse = onExit,
+                onToggleFullscreen = onExit,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            if (chatOpen || colW > 0.dp) {
+                Box(Modifier.width(colW).fillMaxHeight().clipToBounds()) {
+                    if (chatAvailable) {
+                        if (isLive) {
+                            LiveChatSideColumn(state.liveChat, onSignIn, onClose = { state.sheet = null }, Modifier.fillMaxSize())
+                        } else {
+                            ChatReplaySideColumn(state.chatReplay, state.positionMs, onClose = { state.sheet = null }, Modifier.fillMaxSize())
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

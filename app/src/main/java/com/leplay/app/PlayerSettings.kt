@@ -59,3 +59,21 @@ object MiniPlayerSettings {
         prefs?.edit()?.putBoolean(KEY_USE_LIQUID, on)?.apply()
     }
 }
+
+object ShortsSettings {
+    private const val KEY_CLEAN_MODE = "shorts_clean_mode"
+    private var prefs: SharedPreferences? = null
+
+    var cleanMode by mutableStateOf(false)
+        private set
+
+    fun init(context: Context) {
+        prefs = context.getSharedPreferences("playback", Context.MODE_PRIVATE)
+        cleanMode = prefs?.getBoolean(KEY_CLEAN_MODE, false) ?: false
+    }
+
+    fun set(on: Boolean) {
+        cleanMode = on
+        prefs?.edit()?.putBoolean(KEY_CLEAN_MODE, on)?.apply()
+    }
+}

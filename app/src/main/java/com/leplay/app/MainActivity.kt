@@ -900,9 +900,25 @@ fun LePlayTubeApp() {
             }
         }
 
+        val currentItem = player.current
+        val currentIsLive = currentItem != null &&
+            (player.details?.item?.isLive == true || currentItem.isLive)
+        LaunchedEffect(player.sheet, currentItem?.id, currentIsLive) {
+            if (currentItem != null && player.sheet == PlayerSheet.Comments && currentIsLive) {
+                val channelHint = player.details?.item?.channelUrl?.substringAfterLast('/')?.takeIf { it.startsWith("UC") }
+                    ?: player.accountState?.channelId
+                player.liveChat.start(currentItem.id, channelHint)
+            } else {
+                player.liveChat.stop()
+            }
+        }
+        DisposableEffect(Unit) {
+            onDispose { player.liveChat.stop() }
+        }
+
         if (showFullscreen) {
             Box(Modifier.fillMaxSize().layerBackdrop(playerBackdrop)) {
-                FullscreenPlayer(player, onExit = { exitFullscreen() })
+                FullscreenPlayer(player, onExit = { exitFullscreen() }, onSignIn = { signingIn = true })
             }
         } else if (showPlayer) {
             Box(Modifier.fillMaxSize().layerBackdrop(playerBackdrop)) {
