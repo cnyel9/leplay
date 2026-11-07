@@ -830,6 +830,7 @@ private fun VersionHistoryContent() {
     }
 }
 
+@Composable
 private fun AppearanceThemeContent(context: Context) {
     val c = MaterialTheme.colorScheme
     Column(
