@@ -302,7 +302,6 @@ fun MusicScreen(
                         fadeOut(tween(90, easing = Motion.Emphasized))
                 }
             },
-            sizeTransform = null,
             label = "musicBranch",
             modifier = Modifier.fillMaxSize(),
         ) { searching ->
@@ -522,7 +521,6 @@ fun MusicScreen(
                         fadeOut(tween(90, easing = Motion.Emphasized))
                 }
             },
-            sizeTransform = null,
             label = "musicMix",
             modifier = Modifier.fillMaxSize(),
         ) { selected ->
