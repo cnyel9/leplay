@@ -82,6 +82,7 @@ import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.icons.rounded.ZoomIn
@@ -619,10 +620,13 @@ fun VideoContent(
                 }
                 Row(
                     modifier = Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(if (fullscreen) 52.dp else 26.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (fullscreen) 36.dp else 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val skip = if (fullscreen) 50.dp else 43.dp
+                    GlassButton(Icons.Rounded.SkipPrevious, I18n.t("previous", "Previous"), enabled && state.current?.isLive != true, size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
+                        touched(); state.previousVideo()
+                    }
                     GlassButton(Icons.Rounded.Replay10, I18n.t("back_10_seconds", "Back 10 seconds"), enabled, size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
                         touched(); state.seekBy(-10_000)
                     }
@@ -649,6 +653,9 @@ fun VideoContent(
                     ) { touched(); state.togglePlay() }
                     GlassButton(Icons.Rounded.Forward10, I18n.t("forward_10_seconds", "Forward 10 seconds"), enabled, size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
                         touched(); state.seekBy(10_000)
+                    }
+                    GlassButton(Icons.Rounded.SkipNext, I18n.t("next", "Next"), enabled && state.hasNextVideo(), size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
+                        touched(); state.nextVideo()
                     }
                 }
                 Column(
@@ -686,7 +693,7 @@ fun VideoContent(
                                 tinted = false,
                                 backdrop = videoBackdrop,
                             ) { touched(); state.sheet = PlayerSheet.Speed }
-                            Spacer(Modifier.width(4.dp))
+                            Spacer(Modifier.width(8.dp))
                             GlassButton(
                                 Icons.Rounded.HighQuality,
                                 I18n.t("quality", "Quality"),
@@ -696,7 +703,7 @@ fun VideoContent(
                                 tinted = false,
                                 backdrop = videoBackdrop,
                             ) { touched(); state.sheet = PlayerSheet.Quality }
-                            Spacer(Modifier.width(4.dp))
+                            Spacer(Modifier.width(8.dp))
                         }
                         GlassButton(
                             if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
@@ -847,9 +854,10 @@ fun AudioOnlyStage(
         ) {
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(30.dp, Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                TonalSkip(Icons.Rounded.SkipPrevious, I18n.t("previous", "Previous"), interactive && state.current?.isLive != true) { state.previousVideo() }
                 TonalSkip(Icons.Rounded.Replay10, I18n.t("back_10_seconds", "Back 10 seconds"), interactive) { state.seekBy(-10_000) }
                 MorphPlayButton(
                     playing = state.isPlaying,
@@ -860,6 +868,7 @@ fun AudioOnlyStage(
                     enabled = interactive,
                 ) { state.togglePlay() }
                 TonalSkip(Icons.Rounded.Forward10, I18n.t("forward_10_seconds", "Forward 10 seconds"), interactive) { state.seekBy(10_000) }
+                TonalSkip(Icons.Rounded.SkipNext, I18n.t("next", "Next"), interactive && state.hasNextVideo()) { state.nextVideo() }
             }
             Spacer(Modifier.height(8.dp))
             var scrubPreview by remember { mutableStateOf<Long?>(null) }
@@ -987,12 +996,16 @@ private fun SkippedNote(state: PlayerState, modifier: Modifier) {
     ) {
         Text(
             I18n.t("skipped_segment", "Skipped {duration} {category}").replace("{duration}", formatDuration(skip.segment.lengthMs)).replace("{category}", skip.segment.category.shortLabel),
+            modifier = Modifier.weight(1f),
             color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            maxLines = 2,
         )
         Text(
             I18n.t("undo", "Undo"),
             color = skip.segment.category.color, fontSize = 12.sp, fontWeight = FontWeight.Black,
             modifier = Modifier.pressable { state.undoSkip(skip) }.padding(horizontal = 10.dp, vertical = 8.dp),
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }

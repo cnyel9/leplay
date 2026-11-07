@@ -119,6 +119,39 @@ class PlayerState(private val scope: CoroutineScope) {
         }
     }
 
+    fun hasNextVideo(): Boolean =
+        queue.isNotEmpty() || details?.related?.any { it.id != current?.id } == true
+
+    /** Next-video button: the play queue first, then the same up-next pick
+     *  autoplay would make. Video mode only; a live stream has no "next". */
+    fun nextVideo() {
+        if (isMusicMode) return
+        if (queue.isNotEmpty()) {
+            playFromQueue(0)
+            return
+        }
+        if (current?.isLive == true) return
+        autoPlayNext()
+    }
+
+    /** Previous-video button: restart the current video when well into it,
+     *  otherwise go back to the previously watched video. */
+    fun previousVideo() {
+        if (isMusicMode) return
+        if (current?.isLive == true) return
+        if (positionMs > 3000) {
+            seekTo(0L)
+            return
+        }
+        val prev = playedHistory.removeLastOrNull()
+        if (prev != null) {
+            historyNavInProgress = true
+            open(prev)
+        } else {
+            seekTo(0L)
+        }
+    }
+
     fun toggleLoop() {
         val player = controller ?: return
         val next = if (player.repeatMode == Player.REPEAT_MODE_ONE) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ONE
@@ -232,6 +265,12 @@ class PlayerState(private val scope: CoroutineScope) {
     var queue by mutableStateOf<List<VideoItem>>(emptyList())
         private set
 
+    /** Videos watched before the current one, oldest first; powers the
+     *  previous-video button. Video mode only, capped at 50 entries. */
+    private val playedHistory = ArrayDeque<VideoItem>()
+    private var historyNavInProgress = false
+    private var currentShownAsMusic = false
+
     var musicQueue by mutableStateOf<List<VideoItem>>(emptyList())
         private set
 
@@ -285,6 +324,15 @@ class PlayerState(private val scope: CoroutineScope) {
         openedAt = android.os.SystemClock.elapsedRealtime()
         Log.i("LePlayTime", "open ${item.id}")
         if (startPlayback) Net.prewarmMediaConnection()
+        val outgoing = current
+        if (outgoing != null && outgoing.id != item.id && !isMusicMode && !currentShownAsMusic && !historyNavInProgress) {
+            if (playedHistory.lastOrNull()?.id != outgoing.id) {
+                playedHistory.addLast(outgoing)
+                while (playedHistory.size > 50) playedHistory.removeFirst()
+            }
+        }
+        historyNavInProgress = false
+        currentShownAsMusic = isMusicMode
         current = item
         if (isMusicMode) RecentMusic.record(item)
         details = null
@@ -937,6 +985,7 @@ class PlayerState(private val scope: CoroutineScope) {
         loadJob?.cancel()
         controller?.run { stop(); clearMediaItems() }
         chatReplay.reset()
+        playedHistory.clear()
         queue = emptyList()
         expanded = false
         fullscreen = false

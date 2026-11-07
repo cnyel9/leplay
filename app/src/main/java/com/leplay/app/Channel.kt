@@ -5,6 +5,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -514,7 +515,7 @@ fun ChannelScreen(
                 item(key = "header") {
                     AnimatedVisibility(
                         visible = true,
-                        enter = fadeIn(tween(260, easing = Motion.Emphasized)) +
+                        enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(260, easing = Motion.Emphasized)) +
                             slideInVertically(tween(320, easing = Motion.Emphasized)) { it / 8 },
                     ) {
                     Column(Modifier.padding(horizontal = 16.dp)) {
@@ -563,7 +564,7 @@ fun ChannelScreen(
                 when (state.activeTab) {
                     ChannelTab.Videos -> {
                         items(state.videos, key = { it.id }) { video ->
-                            VideoCard(video, onClick = { onOpen(video) }, modifier = Modifier.animateItem())
+                            VideoCard(video, onClick = { onOpen(video) }, modifier = if (GlassSettings.liteMode) Modifier else Modifier.animateItem())
                         }
                         if (state.loading || state.hasMore) item {
                             Box(Modifier.fillMaxWidth().padding(28.dp), Alignment.Center) {
@@ -588,7 +589,7 @@ fun ChannelScreen(
                             }
                         } else {
                             items(state.shorts.chunked(3), key = { row -> row.first().id }) { row ->
-                                ShortsRow(row, onOpenShort, Modifier.animateItem())
+                                ShortsRow(row, onOpenShort, if (GlassSettings.liteMode) Modifier else Modifier.animateItem())
                             }
                             if (state.shortsLoading) item {
                                 Box(Modifier.fillMaxWidth().padding(28.dp), Alignment.Center) {
@@ -614,7 +615,7 @@ fun ChannelScreen(
                             }
                         } else {
                             items(state.liveDisplay, key = { it.id }) { video ->
-                                VideoCard(video, onClick = { onOpen(video) }, modifier = Modifier.animateItem())
+                                VideoCard(video, onClick = { onOpen(video) }, modifier = if (GlassSettings.liteMode) Modifier else Modifier.animateItem())
                             }
                             if (state.liveLoading || state.hasMoreLive) item {
                                 Box(Modifier.fillMaxWidth().padding(28.dp), Alignment.Center) {

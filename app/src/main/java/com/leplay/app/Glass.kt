@@ -52,11 +52,17 @@ object GlassQuality {
     fun init(context: Context) {
         val am = context.getSystemService(ActivityManager::class.java)
         deviceSupports = isRuntimeShaderSupported() && am?.isLowRamDevice != true
-        effectsSupported = deviceSupports && GlassSettings.enabled
+        recompute()
     }
 
     fun setEnabled(enabled: Boolean) {
-        effectsSupported = deviceSupports && enabled
+        recompute()
+    }
+
+    /** Recompute the gate from all three inputs: device capability, the Liquid
+     *  Glass preference and the Lite Mode (Mode Ringan) interlock. */
+    internal fun recompute() {
+        effectsSupported = deviceSupports && GlassSettings.enabled && !GlassSettings.liteMode
     }
 }
 
@@ -67,15 +73,25 @@ object GlassQuality {
 object GlassSettings {
     private const val PREFS = "appearance"
     private const val KEY = "liquid_glass"
+    private const val KEY_LITE_MODE = "lite_mode"
 
     private var prefs: SharedPreferences? = null
 
     var enabled by mutableStateOf(true)
         private set
 
+    /**
+     * Lite Mode (Mode Ringan): a persisted performance mode. While on, the
+     * glass effect gate closes (surfaces go solid), animations collapse to
+     * instant, image crossfades stop and Shorts stops preloading ahead.
+     */
+    var liteMode by mutableStateOf(false)
+        private set
+
     fun init(context: Context) {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).also { prefs = it }
         enabled = p.getBoolean(KEY, true)
+        liteMode = p.getBoolean(KEY_LITE_MODE, false)
         GlassQuality.setEnabled(enabled)
     }
 
@@ -83,6 +99,12 @@ object GlassSettings {
         enabled = value
         prefs?.edit()?.putBoolean(KEY, value)?.apply()
         GlassQuality.setEnabled(value)
+    }
+
+    fun updateLiteMode(value: Boolean) {
+        liteMode = value
+        prefs?.edit()?.putBoolean(KEY_LITE_MODE, value)?.apply()
+        GlassQuality.recompute()
     }
 }
 

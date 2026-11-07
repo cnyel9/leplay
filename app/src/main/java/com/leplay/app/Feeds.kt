@@ -242,7 +242,7 @@ fun FeedList(
             VideoCard(
                 video,
                 onClick = { onOpen(video) },
-                modifier = Modifier.animateItem(),
+                modifier = if (GlassSettings.liteMode) Modifier else Modifier.animateItem(),
             )
         }
         when {

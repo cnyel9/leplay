@@ -257,45 +257,6 @@ fun AppearanceSettings() {
                 ) { Text(label, color = if (on) c.onSecondaryContainer else c.onSurfaceVariant, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
             }
         }
-        Spacer(Modifier.height(14.dp))
-        val choices = buildList {
-            if (ThemeSettings.wallpaperAvailable) add(null to I18n.t("wallpaper_accent", "Wallpaper"))
-            LEPLAY_THEMES.forEach { add(it.hex to it.name) }
-        }
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            choices.forEach { (hex, name) ->
-                val selected = ThemeSettings.seed?.lowercase() == hex?.lowercase()
-                val scheme = schemeFor(context, hex, dark)
-                Column(
-                    Modifier.width(78.dp).pressable { ThemeSettings.choose(hex) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Box(
-                        Modifier
-                            .size(56.dp)
-                            .clip(if (selected) CookieShape else CircleShape)
-                            .background(scheme.surface)
-                            .padding(5.dp)
-                            .clip(if (selected) CookieShape else CircleShape)
-                            .background(
-                                androidx.compose.ui.graphics.Brush.linearGradient(
-                                    0f to scheme.primary, 0.5f to scheme.primary,
-                                    0.5f to scheme.primaryContainer, 1f to scheme.primaryContainer,
-                                ),
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (selected) Icon(Icons.Rounded.Check, I18n.t("selected", "Selected"), tint = scheme.onPrimary, modifier = Modifier.size(22.dp))
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        name, fontSize = 11.5.sp, maxLines = 1, softWrap = false,
-                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
-                        color = if (selected) c.onSurface else c.onSurfaceVariant,
-                    )
-                }
-            }
-        }
     }
 }
 

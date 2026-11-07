@@ -68,6 +68,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
 import kotlin.math.roundToInt
 import kotlin.math.PI
 import kotlin.math.cos
@@ -253,7 +255,7 @@ fun Thumbnail(url: String?, modifier: Modifier = Modifier, radius: Int = 22, vid
         if (id != null) sharpenFeedThumbnail(url, id) else url
     }
     AsyncImage(
-        model = model,
+        model = ImageRequest.Builder(LocalContext.current).data(model).crossfade(!GlassSettings.liteMode).build(),
         contentDescription = null,
         contentScale = ContentScale.Crop,
         modifier = modifier
@@ -338,7 +340,7 @@ fun ChannelAvatar(
             fontSize = (size * 0.4f).sp,
         )
         if (model != null) {
-            AsyncImage(model = model, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(size.dp))
+            AsyncImage(model = ImageRequest.Builder(LocalContext.current).data(model).crossfade(!GlassSettings.liteMode).build(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(size.dp))
         }
     }
     }

@@ -3,20 +3,34 @@ package com.leplay.app
 import android.content.Context
 import android.util.Base64
 import android.view.inputmethod.InputMethodManager
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,12 +44,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,12 +54,18 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
@@ -56,6 +73,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CancellationException
@@ -615,10 +633,99 @@ object LiveChatFeed {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Bottom-anchored shell for the chat panels, with the same mechanics as the
+ * comments panel: it opens at the shared partial height under the player
+ * header, drags between partial and full height, settles on release, and
+ * dismisses from the scrim, the back button or a hard downward fling.
+ */
+@Composable
+private fun ChatPanelScaffold(
+    partialTop: Dp,
+    onClose: () -> Unit,
+    content: @Composable ColumnScope.(close: () -> Unit) -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val reduced = rememberReducedMotion()
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val fullPx = with(density) { (maxHeight - statusTop - 8.dp).toPx() }
+        val partialPx = with(density) { (maxHeight - partialTop).toPx() }.coerceIn(fullPx * 0.35f, fullPx)
+        val height = remember { Animatable(partialPx) }
+        val slide = remember { Animatable(1f) }
+        LaunchedEffect(Unit) { if (reduced) slide.snapTo(0f) else slide.animateTo(0f, spring(dampingRatio = 0.86f, stiffness = 550f)) }
+        fun close() = scope.launch {
+            if (!reduced) slide.animateTo(1f, tween(240, easing = Motion.Emphasized))
+            onClose()
+        }
+        BackHandler { close() }
+        fun dragBy(dy: Float): Float {
+            val before = height.value
+            val after = (before - dy).coerceIn(partialPx * 0.25f, fullPx)
+            scope.launch { height.snapTo(after) }
+            return before - after
+        }
+        fun settle(velocity: Float) {
+            val h = height.value
+            when {
+                h < partialPx * 0.7f || velocity > 1200f && h < partialPx - 1f || velocity > 1800f && h <= partialPx + 1f -> close()
+                velocity < -1200f -> scope.launch { height.animateTo(fullPx, spring(dampingRatio = 0.86f, stiffness = 550f)) }
+                velocity > 1200f -> scope.launch { height.animateTo(partialPx, spring(dampingRatio = 0.86f, stiffness = 550f)) }
+                else -> {
+                    val target = if (h > (partialPx + fullPx) / 2f) fullPx else partialPx
+                    scope.launch { height.animateTo(target, spring(dampingRatio = 0.86f, stiffness = 550f)) }
+                }
+            }
+        }
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.4f * (1f - slide.value)))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { close() },
+                ),
+        )
+        val shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(with(density) { height.value.toDp() })
+                .graphicsLayer { translationY = slide.value * size.height }
+                .shadow(16.dp, shape, ambientColor = Color.Black.copy(alpha = 0.18f), spotColor = Color.Black.copy(alpha = 0.22f))
+                .clip(shape)
+                .background(c.surfaceContainerLow)
+                .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
+                .imePadding()
+                .padding(bottom = 10.dp),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .draggable(
+                        state = rememberDraggableState { dragBy(it) },
+                        orientation = Orientation.Vertical,
+                        onDragStopped = { v -> settle(v) },
+                    )
+                    .padding(top = 10.dp, bottom = 8.dp),
+                Alignment.Center,
+            ) {
+                Box(Modifier.size(width = 36.dp, height = 4.dp).clip(CircleShape).background(c.onSurfaceVariant.copy(alpha = 0.45f)))
+            }
+            content { close() }
+        }
+    }
+}
+
 @Composable
 fun LiveChatPanel(
     state: LiveChatState,
+    partialTop: Dp,
     onSignIn: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -627,113 +734,101 @@ fun LiveChatPanel(
     LaunchedEffect(state.messages.size) {
         if (state.messages.isNotEmpty()) runCatching { list.animateScrollToItem(state.messages.lastIndex) }
     }
-    ModalBottomSheet(
-        onDismissRequest = onClose,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
-        containerColor = c.surfaceContainerLow,
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 320.dp, max = 560.dp)
-                .imePadding()
-                .padding(bottom = 10.dp),
+    ChatPanelScaffold(partialTop = partialTop, onClose = onClose) { close ->
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(if (state.live) c.error else c.onSurfaceVariant),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(I18n.t("live_chat", "Live chat"), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+            Spacer(Modifier.weight(1f))
+            Box(
+                Modifier.size(42.dp).pressable(onClick = close),
+                contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(if (state.live) c.error else c.onSurfaceVariant),
+                Icon(
+                    Icons.Rounded.Close,
+                    I18n.t("close_live_chat", "Close live chat"),
+                    tint = c.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
                 )
-                Spacer(Modifier.width(8.dp))
-                Text(I18n.t("live_chat", "Live chat"), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
-                Spacer(Modifier.weight(1f))
-                Box(
-                    Modifier.size(42.dp).pressable(onClick = onClose),
+            }
+        }
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            when {
+                state.error != null && state.messages.isEmpty() -> Text(
+                    state.error.orEmpty(),
+                    color = c.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+                )
+
+                state.loading && state.messages.isEmpty() -> Box(
+                    Modifier.fillMaxWidth().padding(vertical = 34.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        Icons.Rounded.Close,
-                        I18n.t("close_live_chat", "Close live chat"),
-                        tint = c.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
                 }
-            }
-            Box(Modifier.fillMaxWidth().weight(1f)) {
-                when {
-                    state.error != null && state.messages.isEmpty() -> Text(
-                        state.error.orEmpty(),
-                        color = c.onSurfaceVariant,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
-                    )
 
-                    state.loading && state.messages.isEmpty() -> Box(
-                        Modifier.fillMaxWidth().padding(vertical = 34.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
-                    }
-
-                    state.messages.isEmpty() -> Text(
-                        I18n.t("waiting_for_messages", "Waiting for messages…"),
-                        color = c.onSurfaceVariant,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
-                    )
-
-                    else -> LazyColumn(
-                        state = list,
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(9.dp),
-                    ) {
-                        items(state.messages, key = { it.id }) { message ->
-                            LiveChatRow(message)
-                        }
-                    }
-                }
-            }
-            state.sendError?.let { message ->
-                Text(
-                    message,
-                    color = c.error,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                state.messages.isEmpty() -> Text(
+                    I18n.t("waiting_for_messages", "Waiting for messages…"),
+                    color = c.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
                 )
-            }
-            if (Account.signedIn) {
-                LiveChatComposer(state)
-            } else {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(c.surfaceContainer)
-                        .pressable { onSignIn() }
-                        .padding(horizontal = 16.dp, vertical = 13.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+
+                else -> LazyColumn(
+                    state = list,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
-                    Text(
-                        I18n.t("sign_in_to_chat", "Sign in to chat"),
-                        color = c.primary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Icon(
-                        Icons.AutoMirrored.Rounded.Send,
-                        contentDescription = null,
-                        tint = c.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
+                    items(state.messages, key = { it.id }) { message ->
+                        LiveChatRow(message)
+                    }
                 }
+            }
+        }
+        state.sendError?.let { message ->
+            Text(
+                message,
+                color = c.error,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
+        }
+        if (Account.signedIn) {
+            LiveChatComposer(state)
+        } else {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(c.surfaceContainer)
+                    .pressable { onSignIn() }
+                    .padding(horizontal = 16.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    I18n.t("sign_in_to_chat", "Sign in to chat"),
+                    color = c.primary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    Icons.AutoMirrored.Rounded.Send,
+                    contentDescription = null,
+                    tint = c.primary,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }
@@ -830,16 +925,17 @@ private fun LiveChatRow(message: LiveChatMessage) {
     }
 }
 
+
 /**
  * Read-only replay of a past stream's chat. Messages appear as the playhead
  * reaches the offset they were sent at, and the panel keeps the buffer
  * filled ahead of the playhead while it is open.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatReplayPanel(
     state: ChatReplayState,
     positionMs: Long,
+    partialTop: Dp,
     onClose: () -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
@@ -852,61 +948,49 @@ fun ChatReplayPanel(
             runCatching { list.animateScrollToItem(visible.lastIndex) }
         }
     }
-    ModalBottomSheet(
-        onDismissRequest = onClose,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
-        containerColor = c.surfaceContainerLow,
-    ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 320.dp, max = 560.dp)
-                .imePadding()
-                .padding(bottom = 10.dp),
+    ChatPanelScaffold(partialTop = partialTop, onClose = onClose) { close ->
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Text(I18n.t("chat_replay", "Chat replay"), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+            Spacer(Modifier.weight(1f))
+            Box(
+                Modifier.size(42.dp).pressable(onClick = close),
+                contentAlignment = Alignment.Center,
             ) {
-                Text(I18n.t("chat_replay", "Chat replay"), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
-                Spacer(Modifier.weight(1f))
-                Box(
-                    Modifier.size(42.dp).pressable(onClick = onClose),
+                Icon(
+                    Icons.Rounded.Close,
+                    I18n.t("close_chat_replay", "Close chat replay"),
+                    tint = c.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            when {
+                state.loading && visible.isEmpty() -> Box(
+                    Modifier.fillMaxWidth().padding(vertical = 34.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        Icons.Rounded.Close,
-                        I18n.t("close_chat_replay", "Close chat replay"),
-                        tint = c.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
                 }
-            }
-            Box(Modifier.fillMaxWidth().weight(1f)) {
-                when {
-                    state.loading && visible.isEmpty() -> Box(
-                        Modifier.fillMaxWidth().padding(vertical = 34.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
-                    }
 
-                    visible.isEmpty() -> Text(
-                        I18n.t("waiting_for_messages", "Waiting for messages…"),
-                        color = c.onSurfaceVariant,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
-                    )
+                visible.isEmpty() -> Text(
+                    I18n.t("waiting_for_messages", "Waiting for messages…"),
+                    color = c.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+                )
 
-                    else -> LazyColumn(
-                        state = list,
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(9.dp),
-                    ) {
-                        items(visible, key = { it.id }) { message ->
-                            LiveChatRow(message)
-                        }
+                else -> LazyColumn(
+                    state = list,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp),
+                ) {
+                    items(visible, key = { it.id }) { message ->
+                        LiveChatRow(message)
                     }
                 }
             }

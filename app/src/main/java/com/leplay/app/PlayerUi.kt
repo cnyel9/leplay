@@ -229,7 +229,7 @@ fun PlayerScreen(
             }
         }
     }
-    val ambientColor by animateColorAsState(dominantColor, tween(600), label = "ambient")
+    val ambientColor by animateColorAsState(dominantColor, if (GlassSettings.liteMode) snap() else tween(600), label = "ambient")
     val ambientDrift = if (GlassQuality.effectsSupported) {
         val ambientMotion = androidx.compose.animation.core.rememberInfiniteTransition(label = "ambientDrift")
         val drift by ambientMotion.animateFloat(
@@ -444,10 +444,17 @@ fun PlayerScreen(
 
         if (state.sheet == PlayerSheet.Comments) {
             val detailItem = state.details?.item
+            val screenW = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
+            val videoBottom = top + top + (screenW - StageSideGap * 2) / state.stageAspect
+            val fallbackTop = videoBottom + 10.dp
+            val partialTop = detailsHeaderBottom
+                ?.let { (it + 6.dp).coerceIn(fallbackTop, fallbackTop + 320.dp) }
+                ?: fallbackTop
             when {
                 isLiveStream -> {
                     LiveChatPanel(
                         state.liveChat,
+                        partialTop = partialTop,
                         onSignIn = onSignIn,
                         onClose = { state.sheet = null },
                     )
@@ -456,16 +463,11 @@ fun PlayerScreen(
                     ChatReplayPanel(
                         state = state.chatReplay,
                         positionMs = state.positionMs,
+                        partialTop = partialTop,
                         onClose = { state.sheet = null },
                     )
                 }
                 else -> {
-                    val screenW = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
-                    val videoBottom = top + top + (screenW - StageSideGap * 2) / state.stageAspect
-                    val fallbackTop = videoBottom + 10.dp
-                    val partialTop = detailsHeaderBottom
-                        ?.let { (it + 6.dp).coerceIn(fallbackTop, fallbackTop + 320.dp) }
-                        ?: fallbackTop
                     CommentsPanel(
                         state.comments,
                         partialTop = partialTop,
@@ -941,8 +943,8 @@ fun MiniPlayer(
 
         AnimatedVisibility(
             visible = miniControlsVisible || state.isBuffering || !state.isPlaying,
-            enter = fadeIn(tween(200)),
-            exit = fadeOut(tween(250)),
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(200)),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(250)),
             modifier = Modifier.fillMaxSize(),
         ) {
             Box(Modifier.fillMaxSize()) {
@@ -1061,7 +1063,7 @@ private fun RowScope.MiniDetails(state: PlayerState, interactive: Boolean) {
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Spacer(Modifier.width(2.dp))
+            Spacer(Modifier.width(8.dp))
 
             Box(
                 Modifier
@@ -1085,6 +1087,7 @@ private fun RowScope.MiniDetails(state: PlayerState, interactive: Boolean) {
                     )
                 }
             }
+            Spacer(Modifier.width(6.dp))
 
             Box(
                 Modifier
@@ -1205,7 +1208,10 @@ fun BitChordMusicPlayer(
     ) {
 
         AsyncImage(
-            model = highResMusicThumbnail(item.thumbnail) ?: sharpenFeedThumbnail(null, item.id),
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(highResMusicThumbnail(item.thumbnail) ?: sharpenFeedThumbnail(null, item.id))
+                .crossfade(!GlassSettings.liteMode)
+                .build(),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
@@ -1326,7 +1332,10 @@ fun BitChordMusicPlayer(
                         ),
                 ) {
                     AsyncImage(
-                        model = highResMusicThumbnail(item.thumbnail) ?: sharpenFeedThumbnail(null, item.id),
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(highResMusicThumbnail(item.thumbnail) ?: sharpenFeedThumbnail(null, item.id))
+                            .crossfade(!GlassSettings.liteMode)
+                            .build(),
                         contentDescription = item.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
@@ -1897,6 +1906,7 @@ private fun androidx.compose.foundation.layout.BoxScope.BitChordMiniDetails(
                 )
             }
         }
+        Spacer(Modifier.width(6.dp))
 
         Box(
             Modifier
@@ -1912,6 +1922,7 @@ private fun androidx.compose.foundation.layout.BoxScope.BitChordMiniDetails(
                 modifier = Modifier.size(24.dp),
             )
         }
+        Spacer(Modifier.width(6.dp))
 
         Box(
             Modifier
@@ -1974,13 +1985,23 @@ private fun VideoDetailsBlock(
         Row(
             modifier = if (hasDescription) Modifier.pressable(pressedScale = 0.98f) { onToggleDescription() } else Modifier,
         ) {
-            Text(stats, color = c.onSurfaceVariant, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                stats,
+                modifier = Modifier.weight(1f),
+                color = c.onSurfaceVariant,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (hasDescription) {
                 Text(
                     if (descriptionOpen) I18n.t("show_less", "  less") else I18n.t("show_more", "  …more"),
                     color = c.onSurface,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                    softWrap = false,
                 )
             }
         }

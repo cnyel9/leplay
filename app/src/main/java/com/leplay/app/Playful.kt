@@ -6,6 +6,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -59,7 +60,7 @@ enum class Flourish {
 
 @Composable
 fun FlourishIcon(icon: ImageVector, description: String?, active: Boolean, kind: Flourish, tint: Color, size: Dp, sparkColor: Color = tint) {
-    val reduced = rememberReducedMotion()
+    val reduced = rememberReducedMotion() || GlassSettings.liteMode
     val view = LocalView.current
     val scale = remember { Animatable(1f) }
     val rotation = remember { Animatable(0f) }
@@ -137,9 +138,13 @@ fun RollingText(text: String, color: Color, up: Boolean, fontSize: TextUnit = 14
     AnimatedContent(
         targetState = text,
         transitionSpec = {
-            val dir = if (up) 1 else -1
-            (slideInVertically(spring(dampingRatio = 0.7f, stiffness = 600f)) { it * dir } + fadeIn(tween(150))) togetherWith
-                (slideOutVertically(tween(160)) { -it * dir } + fadeOut(tween(120)))
+            if (GlassSettings.liteMode) {
+                fadeIn(snap()) togetherWith fadeOut(snap())
+            } else {
+                val dir = if (up) 1 else -1
+                (slideInVertically(spring(dampingRatio = 0.7f, stiffness = 600f)) { it * dir } + fadeIn(tween(150))) togetherWith
+                    (slideOutVertically(tween(160)) { -it * dir } + fadeOut(tween(120)))
+            }
         },
         label = "rolling",
     ) { value -> Text(value, color = color, fontWeight = FontWeight.ExtraBold, fontSize = fontSize) }
@@ -148,7 +153,7 @@ fun RollingText(text: String, color: Color, up: Boolean, fontSize: TextUnit = 14
 
 @Composable
 fun Modifier.squishOn(active: Boolean): Modifier {
-    val reduced = rememberReducedMotion()
+    val reduced = rememberReducedMotion() || GlassSettings.liteMode
     val s = remember { Animatable(1f) }
     val first = remember { booleanArrayOf(true) }
     LaunchedEffect(active) {

@@ -96,7 +96,7 @@ fun Modifier.pressable(
     val view = LocalView.current
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val reduced = rememberReducedMotion()
+    val reduced = rememberReducedMotion() || GlassSettings.liteMode
     val tv = TvMode.isTv
     val scale by animateFloatAsState(
         targetValue = if (pressed && !reduced) pressedScale else 1f,

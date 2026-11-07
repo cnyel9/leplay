@@ -86,6 +86,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.CoroutineScope
@@ -629,7 +630,10 @@ fun MusicTrackOptionsSheet(
                         .background(c.surfaceContainerHighest),
                 ) {
                     AsyncImage(
-                        model = highResMusicThumbnail(track.thumbnail) ?: sharpenFeedThumbnail(null, track.id),
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(highResMusicThumbnail(track.thumbnail) ?: sharpenFeedThumbnail(null, track.id))
+                            .crossfade(!GlassSettings.liteMode)
+                            .build(),
                         contentDescription = track.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
@@ -769,7 +773,10 @@ private fun MusicShelfCard(
                 .background(c.surfaceContainerHighest),
         ) {
             AsyncImage(
-                model = highResMusicThumbnail(item.thumbnail),
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(highResMusicThumbnail(item.thumbnail))
+                    .crossfade(!GlassSettings.liteMode)
+                    .build(),
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -831,7 +838,10 @@ private fun MusicTrackSquareCard(
                 .background(c.surfaceContainerHighest),
         ) {
             AsyncImage(
-                model = highResMusicThumbnail(video.thumbnail) ?: sharpenFeedThumbnail(null, video.id),
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(highResMusicThumbnail(video.thumbnail) ?: sharpenFeedThumbnail(null, video.id))
+                    .crossfade(!GlassSettings.liteMode)
+                    .build(),
                 contentDescription = video.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -1139,7 +1149,10 @@ private fun MusicSearchResultRow(
                 .background(c.surfaceContainerHighest),
         ) {
             AsyncImage(
-                model = video.thumbnail ?: sharpenFeedThumbnail(null, video.id),
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(video.thumbnail ?: sharpenFeedThumbnail(null, video.id))
+                    .crossfade(!GlassSettings.liteMode)
+                    .build(),
                 contentDescription = video.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
@@ -1250,8 +1263,10 @@ private fun MusicMixScreen(
                         .background(c.surfaceContainerHighest),
                 ) {
                     AsyncImage(
-                        model = highResMusicThumbnail(item.thumbnail)
-                            ?: sharpenFeedThumbnail(null, item.videoId.orEmpty()),
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(highResMusicThumbnail(item.thumbnail) ?: sharpenFeedThumbnail(null, item.videoId.orEmpty()))
+                            .crossfade(!GlassSettings.liteMode)
+                            .build(),
                         contentDescription = item.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
@@ -1364,7 +1379,10 @@ private fun MusicMixSongRow(
                 .background(c.surfaceContainerHighest),
         ) {
             AsyncImage(
-                model = highResMusicThumbnail(song.thumbnail) ?: sharpenFeedThumbnail(null, song.id),
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(highResMusicThumbnail(song.thumbnail) ?: sharpenFeedThumbnail(null, song.id))
+                    .crossfade(!GlassSettings.liteMode)
+                    .build(),
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),

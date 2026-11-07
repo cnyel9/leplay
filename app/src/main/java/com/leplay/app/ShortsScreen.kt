@@ -11,6 +11,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -126,6 +127,7 @@ import androidx.media3.exoplayer.source.preload.PreloadManagerListener
 import androidx.media3.exoplayer.source.preload.TargetPreloadStatusControl
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -474,6 +476,7 @@ fun ShortsScreen(
     // preload manager. It buffers the first seconds of each source in rank order;
     // a swipe then adopts that wrapped source instead of rebuilding it.
     LaunchedEffect(feed.videos, page) {
+        if (GlassSettings.liteMode) return@LaunchedEffect
         val upcoming = feed.videos.drop(page + 1).take(5)
         val keep = upcoming.mapTo(HashSet()) { it.id }
         feed.videos.getOrNull(page)?.let { keep.add(it.id) }
@@ -556,10 +559,16 @@ fun ShortsScreen(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            val s = 1f - 0.05f * pageOffset
-                            scaleX = s
-                            scaleY = s
-                            alpha = 1f - 0.3f * pageOffset
+                            if (GlassSettings.liteMode) {
+                                scaleX = 1f
+                                scaleY = 1f
+                                alpha = 1f
+                            } else {
+                                val s = 1f - 0.05f * pageOffset
+                                scaleX = s
+                                scaleY = s
+                                alpha = 1f - 0.3f * pageOffset
+                            }
                         }
                         .then(
                             if (TvMode.isTv) Modifier
@@ -607,7 +616,10 @@ fun ShortsScreen(
                         ShortsVideo(exo, Modifier.fillMaxSize())
                     } else {
                         AsyncImage(
-                            model = item.thumbnail ?: feedThumbnailUrl(item.id),
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(item.thumbnail ?: feedThumbnailUrl(item.id))
+                                .crossfade(!GlassSettings.liteMode)
+                                .build(),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize(),
@@ -951,8 +963,8 @@ fun ShortsScreen(
 
         AnimatedVisibility(
             visible = feed.refreshing,
-            enter = fadeIn(tween(160)) + slideInVertically(tween(220)) { -it / 2 },
-            exit = fadeOut(tween(140)) + slideOutVertically(tween(160)) { -it / 2 },
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(160)) + slideInVertically(tween(220)) { -it / 2 },
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(140)) + slideOutVertically(tween(160)) { -it / 2 },
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()

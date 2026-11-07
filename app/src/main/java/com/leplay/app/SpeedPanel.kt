@@ -142,7 +142,7 @@ fun AudioOnlyButton(state: PlayerState) {
 
 @Composable
 fun ColumnScope.SpeedPanel(state: PlayerState) {
-    val reduced = rememberReducedMotion()
+    val reduced = rememberReducedMotion() || GlassSettings.liteMode
     AnimatedVisibility(
         visible = state.speedPanelOpen,
         enter = if (reduced) fadeIn(tween(0)) else
@@ -329,7 +329,7 @@ private fun SpeedReadout(value: () -> Float, modifier: Modifier) {
 @Composable
 private fun RememberCheck(checked: Boolean, modifier: Modifier, onToggle: () -> Unit) {
     val c = MaterialTheme.colorScheme
-    val reduced = rememberReducedMotion()
+    val reduced = rememberReducedMotion() || GlassSettings.liteMode
     val radius by animateDpAsState(if (checked) 9.dp else 7.dp, if (reduced) tween(0) else spring(dampingRatio = 0.6f, stiffness = 500f), label = "checkShape")
     val fill by animateColorAsState(if (checked) c.primary else c.surfaceContainerHighest, tween(200), label = "checkFill")
     val mark by animateFloatAsState(if (checked) 1f else 0f, if (reduced) tween(0) else spring(dampingRatio = 0.5f, stiffness = 600f), label = "checkMark")

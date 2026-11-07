@@ -296,7 +296,7 @@ fun LePlayTubeApp() {
     }
 
     val scrollToTop = remember { mutableStateMapOf<Tab, Int>() }
-    val reduced = rememberReducedMotion()
+    val reduced = rememberReducedMotion() || GlassSettings.liteMode
     val morph = remember { PlayerMorph(scope) { expanded -> player.expanded = expanded } }
     var miniOffsetX by remember { mutableFloatStateOf(0f) }
     var miniOffsetY by remember { mutableFloatStateOf(0f) }
@@ -735,12 +735,19 @@ fun LePlayTubeApp() {
                 onSignedOut = { lib.reset(); lib.home.refresh(); player.refreshAccountState() },
                 onAccountSwitched = {
                     scope.launch {
-                        appFlipRotation.animateTo(90f, tween(240, easing = androidx.compose.animation.core.FastOutLinearInEasing))
-                        lib.reset()
-                        lib.home.refresh()
-                        player.refreshAccountState()
-                        appFlipRotation.snapTo(-90f)
-                        appFlipRotation.animateTo(0f, tween(300, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
+                        if (GlassSettings.liteMode) {
+                            appFlipRotation.snapTo(0f)
+                            lib.reset()
+                            lib.home.refresh()
+                            player.refreshAccountState()
+                        } else {
+                            appFlipRotation.animateTo(90f, tween(240, easing = androidx.compose.animation.core.FastOutLinearInEasing))
+                            lib.reset()
+                            lib.home.refresh()
+                            player.refreshAccountState()
+                            appFlipRotation.snapTo(-90f)
+                            appFlipRotation.animateTo(0f, tween(300, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
+                        }
                     }
                 },
                 contentPadding = PaddingValues(bottom = navBottom),
@@ -851,8 +858,8 @@ fun LePlayTubeApp() {
         val showBottomBar = !openSettings && shortsEntry == null && !pip.active && (tab != Tab.Shorts || !isShortsCommentsOpen)
         AnimatedVisibility(
             visible = showBottomBar,
-            enter = slideInVertically(tween(260, easing = Motion.Emphasized)) { it } + fadeIn(tween(160)),
-            exit = slideOutVertically(tween(200, easing = Motion.Emphasized)) { it } + fadeOut(tween(140)),
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else slideInVertically(tween(260, easing = Motion.Emphasized)) { it } + fadeIn(tween(160)),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else slideOutVertically(tween(200, easing = Motion.Emphasized)) { it } + fadeOut(tween(140)),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(start = 16.dp, end = 16.dp, bottom = stackBottom + NavLift)
@@ -935,24 +942,24 @@ fun LePlayTubeApp() {
 
         AnimatedVisibility(
             visible = player.sheet == PlayerSheet.Settings,
-            enter = fadeIn(tween(180, easing = Motion.Emphasized)),
-            exit = fadeOut(tween(150)),
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(180, easing = Motion.Emphasized)),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(150)),
         ) {
             PlayerSettingsSheet(player, glassBackdrop, onDismiss = { player.sheet = null })
         }
 
         AnimatedVisibility(
             visible = player.sheet == PlayerSheet.Speed,
-            enter = fadeIn(tween(180, easing = Motion.Emphasized)),
-            exit = fadeOut(tween(150)),
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(180, easing = Motion.Emphasized)),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(150)),
         ) {
             SpeedSheet(player, glassBackdrop, onDismiss = { player.sheet = null })
         }
 
         AnimatedVisibility(
             visible = player.sheet == PlayerSheet.Audio,
-            enter = fadeIn(tween(180, easing = Motion.Emphasized)),
-            exit = fadeOut(tween(150)),
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(180, easing = Motion.Emphasized)),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(150)),
         ) {
             AudioTrackSheet(player, glassBackdrop, onDismiss = { player.sheet = null })
         }
@@ -969,8 +976,8 @@ fun LePlayTubeApp() {
 
         AnimatedVisibility(
             visible = downloadNotice != null,
-            enter = slideInVertically(tween(280, easing = Motion.Emphasized)) { it } + fadeIn(),
-            exit = slideOutVertically(tween(200, easing = Motion.Emphasized)) { it } + fadeOut(),
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else slideInVertically(tween(280, easing = Motion.Emphasized)) { it } + fadeIn(),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else slideOutVertically(tween(200, easing = Motion.Emphasized)) { it } + fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = navTop + (if (hasMini) MiniHeight + MiniGap else 0.dp) + 12.dp)
@@ -1056,7 +1063,7 @@ private fun QueueMessage(player: PlayerState, modifier: Modifier) {
 private fun NavPill(selected: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
     val view = LocalView.current
-    val reduced = rememberReducedMotion()
+    val reduced = rememberReducedMotion() || GlassSettings.liteMode
     val shape = RoundedCornerShape(32.dp)
 
     Surface(

@@ -23,6 +23,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -31,7 +32,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
@@ -141,7 +144,7 @@ fun SettingsScreen(
     var checkingUpdate by remember { mutableStateOf(false) }
     var updateFeedback by remember { mutableStateOf<String?>(null) }
 
-    val isOverlayOpen = activeFloatingSection != null || showSignOutConfirm || checkingUpdate || updateFeedback != null
+    val isOverlayOpen = showSignOutConfirm || checkingUpdate || updateFeedback != null
     val blurRadius by animateDpAsState(
         targetValue = if (isOverlayOpen && Build.VERSION.SDK_INT >= 31) 16.dp else 0.dp,
         animationSpec = tween(220),
@@ -312,8 +315,15 @@ fun SettingsScreen(
         AnimatedContent(
             targetState = activeFloatingSection,
             transitionSpec = {
-                (scaleIn(spring(dampingRatio = 0.82f, stiffness = 420f), initialScale = 0.90f) + fadeIn(tween(180))) togetherWith
-                    (scaleOut(tween(130), targetScale = 0.92f) + fadeOut(tween(130)))
+                if (GlassSettings.liteMode) {
+                    fadeIn(snap()) togetherWith fadeOut(snap())
+                } else if (targetState == null) {
+                    (slideInHorizontally(tween(300, easing = Motion.Emphasized)) { -it } + fadeIn(tween(160))) togetherWith
+                        (slideOutHorizontally(tween(260, easing = Motion.Emphasized)) { it } + fadeOut(tween(180)))
+                } else {
+                    (slideInHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeIn(tween(160))) togetherWith
+                        (slideOutHorizontally(tween(260, easing = Motion.Emphasized)) { -it } + fadeOut(tween(180)))
+                }
             },
             label = "settingsFloatingSection",
         ) { section ->
@@ -364,8 +374,8 @@ fun SettingsScreen(
 
         AnimatedVisibility(
             visible = showSignOutConfirm,
-            enter = scaleIn(spring(dampingRatio = 0.8f, stiffness = 400f), initialScale = 0.88f) + fadeIn(tween(160)),
-            exit = scaleOut(tween(120), targetScale = 0.92f) + fadeOut(tween(120)),
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else scaleIn(spring(dampingRatio = 0.8f, stiffness = 400f), initialScale = 0.88f) + fadeIn(tween(160)),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else scaleOut(tween(120), targetScale = 0.92f) + fadeOut(tween(120)),
         ) {
             Box(
                 modifier = Modifier
@@ -460,8 +470,8 @@ fun SettingsScreen(
 
         AnimatedVisibility(
             visible = checkingUpdate || updateFeedback != null,
-            enter = scaleIn(spring(dampingRatio = 0.8f, stiffness = 400f), initialScale = 0.88f) + fadeIn(tween(160)),
-            exit = scaleOut(tween(120), targetScale = 0.92f) + fadeOut(tween(120)),
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else scaleIn(spring(dampingRatio = 0.8f, stiffness = 400f), initialScale = 0.88f) + fadeIn(tween(160)),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else scaleOut(tween(120), targetScale = 0.92f) + fadeOut(tween(120)),
         ) {
             Box(
                 modifier = Modifier
@@ -664,97 +674,41 @@ private fun SettingsFloatingDialog(
     val c = MaterialTheme.colorScheme
     BackHandler(onBack = onDismiss)
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss,
-            ),
-        contentAlignment = Alignment.Center,
+            .background(c.surface),
     ) {
+        BackScreenHeader(onBack = onDismiss) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontFamily = RoundedHeavy,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 19.sp,
+                    letterSpacing = (-0.4).sp,
+                    color = c.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = subtitle,
+                    fontSize = 11.5.sp,
+                    color = c.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
         Column(
             modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 20.dp)
-                .widthIn(max = 410.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .background(c.surfaceContainerHighest)
-                .border(1.dp, c.onSurface.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                ) { }
-                .padding(18.dp),
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(c.surfaceContainerHigh)
-                        .pressable(onClick = onDismiss),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = I18n.t("back", "Back"),
-                        tint = c.onSurface,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        fontFamily = RoundedHeavy,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        color = c.onSurface,
-                    )
-                    Spacer(Modifier.height(1.dp))
-                    Text(
-                        text = subtitle,
-                        fontSize = 11.5.sp,
-                        color = c.onSurfaceVariant,
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(c.surfaceContainerHigh)
-                        .pressable(onClick = onDismiss),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Rounded.Close,
-                        contentDescription = I18n.t("close", "Close"),
-                        tint = c.onSurfaceVariant,
-                        modifier = Modifier.size(17.dp),
-                    )
-                }
-            }
-
-            HorizontalDivider(
-                color = c.onSurface.copy(alpha = 0.08f),
-                modifier = Modifier.padding(bottom = 6.dp),
-            )
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 460.dp)
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                content()
-            }
+            content()
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
@@ -774,8 +728,16 @@ private fun AppearanceThemeContent(context: Context) {
             } else {
                 I18n.t("liquid_glass_sub_off", "Using solid Material surfaces with no transparency")
             },
-            checked = GlassSettings.enabled,
+            checked = GlassSettings.enabled && !GlassSettings.liteMode,
             onCheckedChange = { GlassSettings.updateEnabled(it) },
+            enabled = !GlassSettings.liteMode,
+        )
+
+        SettingsSwitchRow(
+            title = I18n.t("lite_mode", "Lite Mode"),
+            subtitle = I18n.t("lite_mode_sub", "Solid surfaces, animations off, no Shorts preloading"),
+            checked = GlassSettings.liteMode,
+            onCheckedChange = { GlassSettings.updateLiteMode(it) },
         )
 
         HorizontalDivider(color = c.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 4.dp))
@@ -823,70 +785,6 @@ private fun AppearanceThemeContent(context: Context) {
             }
         }
 
-        HorizontalDivider(color = c.onSurface.copy(alpha = 0.08f))
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(I18n.t("color_palette", "Color palette"), fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                    Text(I18n.t("color_palette_sub", "Choose an accent for the app"), color = c.onSurfaceVariant, fontSize = 12.sp)
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-
-            val dark = isDarkTheme()
-            val choices = buildList {
-                if (ThemeSettings.wallpaperAvailable) add(null to I18n.t("wallpaper_accent", "Wallpaper"))
-                LEPLAY_THEMES.forEach { add(it.hex to it.name) }
-            }
-
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                choices.forEach { (hex, name) ->
-                    val selected = ThemeSettings.seed?.lowercase() == hex?.lowercase()
-                    val scheme = schemeFor(context, hex, dark)
-                    Column(
-                        modifier = Modifier
-                            .width(64.dp)
-                            .pressable { ThemeSettings.choose(hex) },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(CircleShape)
-                                .background(if (selected) scheme.primaryContainer else Color.Transparent)
-                                .padding(4.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(scheme.primary, scheme.primaryContainer)
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (selected) {
-                                Icon(Icons.Rounded.Check, I18n.t("selected", "Selected"), tint = scheme.onPrimary, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                        Spacer(Modifier.height(5.dp))
-                        Text(
-                            name,
-                            fontSize = 10.5.sp,
-                            maxLines = 1,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (selected) c.onSurface else c.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -1349,31 +1247,36 @@ private fun GeneralModificationContent(context: Context) {
             Column(modifier = Modifier.padding(vertical = 6.dp)) {
                 SponsorBlock.Category.entries.forEach { category ->
                     val current = SponsorBlock.actionFor(category)
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            Modifier
-                                .padding(end = 8.dp)
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(category.color)
-                        )
-                        Column(Modifier.weight(1f)) {
-                            Text(category.displayLabel, fontWeight = FontWeight.Medium, fontSize = 12.sp, maxLines = 2)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier
+                                    .padding(end = 8.dp)
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(category.color)
+                            )
+                            Text(category.displayLabel, Modifier.weight(1f), fontWeight = FontWeight.Medium, fontSize = 12.sp, maxLines = 2)
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
                             SponsorBlock.Action.entries.forEach { action ->
                                 val on = action == current
                                 Box(
                                     modifier = Modifier
+                                        .weight(1f)
                                         .pressable { SponsorBlock.setAction(category, action) }
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(if (on) c.secondaryContainer else Color.Transparent)
                                         .padding(horizontal = 6.dp, vertical = 6.dp),
+                                    contentAlignment = Alignment.Center,
                                 ) {
                                     Text(
                                         action.displayLabel,
@@ -1928,8 +1831,12 @@ private fun SettingsProfileCard(
                 targetState = profile,
                 modifier = Modifier.weight(1f),
                 transitionSpec = {
-                    (fadeIn(tween(240)) + slideInVertically(tween(300)) { it / 8 }) togetherWith
-                        (fadeOut(tween(160)) + slideOutVertically(tween(200)) { -it / 8 })
+                    if (GlassSettings.liteMode) {
+                        fadeIn(snap()) togetherWith fadeOut(snap())
+                    } else {
+                        (fadeIn(tween(240)) + slideInVertically(tween(300)) { it / 8 }) togetherWith
+                            (fadeOut(tween(160)) + slideOutVertically(tween(200)) { -it / 8 })
+                    }
                 },
                 label = "accountHeader",
             ) { current ->
@@ -2011,8 +1918,8 @@ private fun SettingsProfileCard(
 
         AnimatedVisibility(
             visible = expanded && profile != null,
-            enter = fadeIn(tween(180)) + expandVertically(tween(260)),
-            exit = fadeOut(tween(140)) + shrinkVertically(tween(200)),
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(180)) + expandVertically(tween(260)),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(140)) + shrinkVertically(tween(200)),
         ) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 6.dp)) {
                 HorizontalDivider(color = c.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(bottom = 6.dp))
@@ -2171,12 +2078,13 @@ private fun SettingsSwitchRow(
     subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
 ) {
     val c = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .pressable { onCheckedChange(!checked) }
+            .pressable(enabled = enabled) { onCheckedChange(!checked) }
             .padding(vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -2203,6 +2111,7 @@ private fun SettingsSwitchRow(
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            enabled = enabled,
             colors = SwitchDefaults.colors(checkedTrackColor = c.primary),
         )
     }
