@@ -76,6 +76,7 @@ import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.DataUsage
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
@@ -100,6 +101,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -259,6 +261,12 @@ fun SettingsScreen(
                         }
                     )
                     SettingsRow(
+                        icon = Icons.Rounded.History,
+                        title = I18n.t("version_history", "Version history"),
+                        subtitle = I18n.t("version_history_sub", "Changelogs from 0.0.1 to the latest"),
+                        onClick = { activeFloatingSection = SettingsFloatingSection.VERSION_HISTORY },
+                    )
+                    SettingsRow(
                         icon = Icons.Rounded.FileDownload,
                         title = I18n.t("check_updates", "Check for updates"),
                         subtitle = I18n.t("check_updates_sub", "New GitHub releases install from inside the app"),
@@ -367,6 +375,15 @@ fun SettingsScreen(
                         LanguageContent(context = context) {
                             activeFloatingSection = null
                         }
+                    }
+                }
+                SettingsFloatingSection.VERSION_HISTORY -> {
+                    SettingsFloatingDialog(
+                        title = I18n.t("version_history", "Version history"),
+                        subtitle = I18n.t("version_history_sub", "Changelogs from 0.0.1 to the latest"),
+                        onDismiss = { activeFloatingSection = null },
+                    ) {
+                        VersionHistoryContent()
                     }
                 }
                 null -> {}
@@ -574,6 +591,7 @@ private enum class SettingsFloatingSection {
     GENERAL_MODS,
     STORAGE_USAGE,
     LANGUAGE,
+    VERSION_HISTORY,
 }
 
 @Composable
@@ -715,6 +733,103 @@ private fun SettingsFloatingDialog(
 }
 
 @Composable
+private fun VersionHistoryContent() {
+    val c = MaterialTheme.colorScheme
+    var releases by remember { mutableStateOf<List<ReleaseEntry>?>(null) }
+    var failed by remember { mutableStateOf(false) }
+    var retryTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(retryTick) {
+        failed = false
+        releases = null
+        runCatching { fetchReleaseHistory() }
+            .onSuccess { releases = it }
+            .onFailure { failed = true }
+    }
+    when {
+        failed -> Column(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                I18n.t("release_history_failed", "Could not load version history"),
+                color = c.onSurfaceVariant, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+            )
+            Spacer(Modifier.height(12.dp))
+            PillButton(I18n.t("retry", "Retry"), onClick = { retryTick++ })
+        }
+        releases == null -> Column(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            CircularProgressIndicator(color = c.primary, strokeWidth = 3.dp, modifier = Modifier.size(36.dp))
+            Spacer(Modifier.height(14.dp))
+            Text(
+                I18n.t("connecting_github_releases", "Connecting to GitHub releases…"),
+                fontSize = 12.5.sp, color = c.onSurfaceVariant,
+            )
+        }
+        else -> LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(releases.orEmpty(), key = { it.tag }) { entry ->
+                SettingsCard {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                entry.name.ifBlank { "LePlay ${entry.version}" },
+                                fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold,
+                                fontSize = 16.sp, color = c.onSurface,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (entry.version == BuildConfig.VERSION_NAME) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF132818))
+                                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF2ECC71)),
+                                        )
+                                        Spacer(Modifier.width(5.dp))
+                                        Text(
+                                            text = I18n.t("up_to_date", "Up to date"),
+                                            color = Color(0xFF2ECC71),
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 11.sp,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (entry.publishedAt.isNotBlank()) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                entry.publishedAt.take(10),
+                                fontSize = 12.sp, color = c.onSurfaceVariant,
+                            )
+                        }
+                        if (entry.body.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                entry.body.trim(),
+                                fontSize = 13.sp, lineHeight = 19.sp,
+                                color = c.onSurface.copy(alpha = 0.92f),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 private fun AppearanceThemeContent(context: Context) {
     val c = MaterialTheme.colorScheme
     Column(

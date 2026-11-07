@@ -363,7 +363,7 @@ fun PlayerScreen(
                         contentPadding = PaddingValues(bottom = bottom + 32.dp),
                     ) {
                         item(key = "wideMoreTitle") { SectionTitle(I18n.t("more_videos", "More videos")) }
-                        val related = details?.related.orEmpty()
+                        val related = state.displayRelated
                         if (related.isNotEmpty()) {
                             items(related, key = { "wide-rel-" + it.id }) { video ->
                                 Box((if (GlassSettings.liteMode) Modifier else Modifier.animateItem()).padding(horizontal = 14.dp, vertical = 2.dp)) { VideoRow(video, onClick = { onOpen(video) }) }
@@ -409,7 +409,7 @@ fun PlayerScreen(
                 contentPadding = PaddingValues(bottom = bottom + 32.dp),
             ) {
                 item(key = "info") { VideoDetailsBlock(state, item, details, c, descriptionOpen, { descriptionOpen = !descriptionOpen }, isLiveStream, replay = hasChatReplay, onHeaderBottom = { detailsHeaderBottom = it }) }
-                val related = details?.related.orEmpty()
+                val related = state.displayRelated
                 if (related.isNotEmpty()) {
                     item(key = "moreTitle") { SectionTitle(I18n.t("more_videos", "More videos")) }
                     items(related, key = { "rel-" + it.id }) { video ->
@@ -1206,6 +1206,7 @@ fun BitChordMusicPlayer(
     val item = state.current ?: return
     val context = LocalContext.current
     var showTrackMenu by remember(item.id) { mutableStateOf(false) }
+    var showMusicQueue by remember(item.id) { mutableStateOf(false) }
     var showLyrics by remember(item.id) { mutableStateOf(false) }
     var lyrics by remember(item.id) { mutableStateOf<LyricsDoc?>(null) }
     var lyricsLoading by remember(item.id) { mutableStateOf(false) }
@@ -1578,25 +1579,47 @@ fun BitChordMusicPlayer(
                     }
 
 
-                    IconButton(
-                        onClick = { showLyrics = !showLyrics },
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(
-                            Icons.Rounded.Lyrics,
-                            contentDescription = I18n.t("lyrics", "Lyrics"),
-                            tint = if (showLyrics) c.primary else c.onSurfaceVariant.copy(alpha = 0.7f),
-                            modifier = Modifier.size(22.dp),
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { showMusicQueue = true },
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Icon(
+                                Icons.Rounded.QueueMusic,
+                                contentDescription = I18n.t("up_next_title", "Up next"),
+                                tint = c.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        IconButton(
+                            onClick = { showLyrics = !showLyrics },
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Icon(
+                                Icons.Rounded.Lyrics,
+                                contentDescription = I18n.t("lyrics", "Lyrics"),
+                                tint = if (showLyrics) c.primary else c.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
+    if (showMusicQueue) {
+        LaunchedEffect(item.id) { state.maybeRefillMusicQueue() }
+        MusicQueuePanel(
+            player = state,
+            onDismiss = { showMusicQueue = false },
+        )
+    }
+
     if (showTrackMenu) {
         MusicTrackOptionsSheet(
             track = item,
+            onStartRadio = { state.startRadio(item) },
             onPlayNext = { state.playNextMusic(item) },
             onDownloadAudio = {
                 val queued = Downloads.enqueueMusic(item)
@@ -2014,12 +2037,12 @@ private fun VideoDetailsBlock(
             details?.likes?.takeIf { it > 0 }?.let { "${formatCount(it)} ${I18n.t("likes", "likes")}" },
         ).joinToString(" · ")
         val hasDescription = !details?.description.isNullOrBlank()
-        Row(
+        Column(
             modifier = if (hasDescription) Modifier.pressable(pressedScale = 0.98f) { onToggleDescription() } else Modifier,
         ) {
             Text(
                 stats,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
                 color = c.onSurfaceVariant,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -2028,7 +2051,7 @@ private fun VideoDetailsBlock(
             )
             if (hasDescription) {
                 Text(
-                    if (descriptionOpen) I18n.t("show_less", "  less") else I18n.t("show_more", "  …more"),
+                    (if (descriptionOpen) I18n.t("show_less", "  less") else I18n.t("show_more", "  …more")).trim(),
                     color = c.onSurface,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.ExtraBold,

@@ -50,6 +50,7 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.CircularProgressIndicator
@@ -192,6 +193,8 @@ fun MusicScreen(
     onSearch: () -> Unit,
     onAccount: () -> Unit,
     onPlayNext: (VideoItem) -> Unit = {},
+    onStartRadio: (VideoItem) -> Unit = {},
+    onStartPlaylistRadio: (String) -> Unit = {},
     onOpenQueue: (List<VideoItem>, Int) -> Unit = { list, index -> list.getOrNull(index)?.let(onOpen) },
     scrollToTop: Int = 0,
 ) {
@@ -275,6 +278,7 @@ fun MusicScreen(
     trackOptionsFor?.let { track ->
         MusicTrackOptionsSheet(
             track = track,
+            onStartRadio = { onStartRadio(track) },
             onPlayNext = {
                 onPlayNext(track)
                 Toast.makeText(context, I18n.t("music_playing_next_toast", "Playing next: {title}").replace("{title}", track.title), Toast.LENGTH_SHORT).show()
@@ -536,6 +540,16 @@ fun MusicScreen(
                 onOpenSong = { index -> onOpenQueue(mixSongs, index) },
                 onDownloadSong = ::downloadAudio,
                 onOptions = { trackOptionsFor = it },
+                onStartRadio = {
+                    val pid = selected.playlistId?.removePrefix("VL")
+                    val vid = selected.videoId
+                    when {
+                        !pid.isNullOrEmpty() -> onStartPlaylistRadio(pid)
+                        !vid.isNullOrEmpty() -> selected.toVideoItem()?.let(onStartRadio)
+                        mixSongs.isNotEmpty() -> onStartRadio(mixSongs.first())
+                        else -> Unit
+                    }
+                },
             )
             }
         }
@@ -643,6 +657,7 @@ fun MusicTrackOptionsSheet(
     onDownloadAudio: () -> Unit,
     onShare: () -> Unit,
     onDismiss: () -> Unit,
+    onStartRadio: () -> Unit = {},
 ) {
     val c = MaterialTheme.colorScheme
     ModalBottomSheet(
@@ -721,6 +736,33 @@ fun MusicTrackOptionsSheet(
                 Spacer(Modifier.width(16.dp))
                 Text(
                     I18n.t("play_next", "Play next"),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = c.onSurface,
+                )
+            }
+
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable {
+                        onStartRadio()
+                        onDismiss()
+                    }
+                    .padding(vertical = 14.dp, horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Rounded.Radio,
+                    contentDescription = null,
+                    tint = c.primary,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.width(16.dp))
+                Text(
+                    I18n.t("start_radio", "Start radio"),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = c.onSurface,
@@ -1270,6 +1312,7 @@ private fun MusicMixScreen(
     onOpenSong: (Int) -> Unit,
     onDownloadSong: (VideoItem) -> Unit,
     onOptions: (VideoItem) -> Unit,
+    onStartRadio: () -> Unit = {},
 ) {
     val c = MaterialTheme.colorScheme
     Box(
@@ -1347,6 +1390,17 @@ private fun MusicMixScreen(
                         color = c.onSurfaceVariant.copy(alpha = 0.7f),
                     )
                 }
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+            ) {
+                PillButton(
+                    text = I18n.t("start_radio", "Start radio"),
+                    onClick = onStartRadio,
+                    icon = Icons.Rounded.Radio,
+                )
             }
             Spacer(Modifier.height(6.dp))
             when {

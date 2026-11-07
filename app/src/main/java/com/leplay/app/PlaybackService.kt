@@ -134,11 +134,39 @@ class PlaybackService : MediaSessionService() {
         player.addListener(StreamRecoverer(player, sources, resolver))
         resumeSaver = ResumeSaver(player).also(player::addListener)
         watchTime = WatchTimeReporter(player).also(player::addListener)
-        session = MediaSession.Builder(this, player)
+        session = MediaSession.Builder(this, notificationPlayer(player))
             .setSessionActivity(openApp)
             .setCallback(SessionCallback())
             .build()
     }
+
+    /** Wraps the real player for the media session so the system playback
+     *  notification gains next/previous actions. The app's queues live
+     *  outside the player timeline (one item at a time), so ExoPlayer
+     *  itself never advertises seek-to-next; the overrides advertise the
+     *  commands and route them into the UI-side PlayerState through
+     *  [PlayerNotificationHooks]. Service and UI run in the same process,
+     *  which is what makes this plain-hook coupling safe. If no hook is
+     *  registered (UI not created yet), the calls fall back to the wrapped
+     *  player's own behavior. */
+    private fun notificationPlayer(player: ExoPlayer): Player =
+        object : androidx.media3.common.ForwardingPlayer(player) {
+            override fun getAvailableCommands(): Player.Commands =
+                super.getAvailableCommands().buildUpon()
+                    .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                    .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                    .build()
+
+            override fun seekToNextMediaItem() {
+                val hook = PlayerNotificationHooks.onNext
+                if (hook != null) hook() else super.seekToNextMediaItem()
+            }
+
+            override fun seekToPreviousMediaItem() {
+                val hook = PlayerNotificationHooks.onPrevious
+                if (hook != null) hook() else super.seekToPreviousMediaItem()
+            }
+        }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 

@@ -50,9 +50,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -60,7 +62,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.platform.LocalContext
@@ -192,6 +199,187 @@ fun QueueSheet(player: PlayerState, onDismiss: () -> Unit) {
 }
 
 
+
+private val MusicQueueRowHeight = 64.dp
+
+/** Up-next panel for music mode, bound to the living music queue: rows
+ *  play/remove, long-press drag reorders, and a Related section fed by
+ *  the current song's watch-next related endpoint. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MusicQueuePanel(player: PlayerState, onDismiss: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    var related by remember(player.current?.id) { mutableStateOf<List<VideoItem>>(emptyList()) }
+    LaunchedEffect(player.current?.id) {
+        val currentId = player.current?.id ?: return@LaunchedEffect
+        runCatching {
+            val page = InnerTube.musicNext(videoId = currentId)
+            val endpoint = page.relatedEndpoint ?: return@runCatching
+            val queuedIds = player.musicQueue.map { it.id }.toHashSet()
+            related = InnerTube.musicRelated(endpoint)
+                .filter { it.id != currentId && it.id !in queuedIds }
+                .take(20)
+        }
+    }
+    var dragId by remember { mutableStateOf<String?>(null) }
+    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = c.surfaceContainerLow) {
+        Row(Modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                I18n.t("up_next_title", "Up next") + " · " + player.musicQueue.size,
+                fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 21.sp,
+                modifier = Modifier.weight(1f),
+            )
+            if (player.musicQueue.isNotEmpty()) {
+                Text(
+                    I18n.t("clear", "Clear"), color = c.primary, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp,
+                    modifier = Modifier.pressable { player.clearMusicQueue() }.padding(8.dp),
+                )
+            }
+        }
+        if (player.musicQueueSource is MusicQueueSource.RadioSong ||
+            player.musicQueueSource is MusicQueueSource.RadioPlaylist
+        ) {
+            Text(
+                I18n.t("playing_from_radio", "Playing from radio"),
+                color = c.onSurfaceVariant, fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 4.dp),
+            )
+        }
+        if (player.musicQueue.isEmpty() && related.isEmpty()) {
+            Text(
+                I18n.t("queue_music_empty", "Nothing up next yet"),
+                color = c.onSurfaceVariant, fontSize = 14.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
+            )
+        } else {
+            val density = LocalDensity.current
+            val rowHeightPx = with(density) { MusicQueueRowHeight.toPx() }
+            LazyColumn(Modifier.fillMaxHeight(0.7f)) {
+                itemsIndexed(player.musicQueue, key = { _, v -> "mq-${v.id}" }) { index, song ->
+                    val isDragging = dragId == song.id
+                    Box(
+                        (if (GlassSettings.liteMode) Modifier else Modifier.animateItem())
+                            .padding(horizontal = 20.dp)
+                            .then(
+                                if (isDragging) {
+                                    Modifier
+                                        .zIndex(1f)
+                                        .graphicsLayer { translationY = dragOffsetPx }
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                    ) {
+                        MusicQueueRow(
+                            song = song,
+                            onClick = { player.playFromMusicQueue(index); onDismiss() },
+                            onRemove = { player.removeFromMusicQueue(index) },
+                            dragModifier = Modifier.pointerInput(song.id) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        dragId = song.id
+                                        dragOffsetPx = 0f
+                                    },
+                                    onDragEnd = {
+                                        dragId = null
+                                        dragOffsetPx = 0f
+                                    },
+                                    onDragCancel = {
+                                        dragId = null
+                                        dragOffsetPx = 0f
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        dragOffsetPx += dragAmount.y
+                                        val from = player.musicQueue.indexOfFirst { it.id == song.id }
+                                        if (from >= 0) {
+                                            val target = (from + (dragOffsetPx / rowHeightPx).roundToInt())
+                                                .coerceIn(0, player.musicQueue.lastIndex)
+                                            if (target != from) {
+                                                player.moveMusicQueue(from, target)
+                                                dragOffsetPx -= (target - from) * rowHeightPx
+                                            }
+                                        }
+                                    },
+                                )
+                            },
+                        )
+                    }
+                }
+                if (related.isNotEmpty()) {
+                    item(key = "mq-related-title") {
+                        Text(
+                            I18n.t("related_title", "Related"),
+                            fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        )
+                    }
+                    itemsIndexed(related, key = { _, v -> "mq-rel-${v.id}" }) { _, song ->
+                        Box((if (GlassSettings.liteMode) Modifier else Modifier.animateItem()).padding(horizontal = 20.dp)) {
+                            MusicQueueRow(
+                                song = song,
+                                onClick = {
+                                    player.startRadio(song)
+                                    onDismiss()
+                                },
+                                onRemove = null,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun MusicQueueRow(
+    song: VideoItem,
+    onClick: () -> Unit,
+    onRemove: (() -> Unit)?,
+    dragModifier: Modifier = Modifier,
+) {
+    val c = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(MusicQueueRowHeight)
+            .then(dragModifier)
+            .pressable(pressedScale = 0.98f, onClick = onClick)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Thumbnail(song.thumbnail, Modifier.size(48.dp), radius = 10, videoId = song.id)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                song.title,
+                fontWeight = FontWeight.Bold, fontSize = 14.sp, lineHeight = 18.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                song.channel,
+                color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (song.durationSec > 0) {
+            Text(
+                formatDuration(song.durationSec * 1000),
+                color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+        if (onRemove != null) {
+            Box(Modifier.size(40.dp).pressable { onRemove() }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Close, I18n.t("remove_from_queue", "Remove from queue"), tint = c.onSurfaceVariant)
+            }
+        }
+    }
+}
 
 @Composable
 fun SponsorBlockSettings() {

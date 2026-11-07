@@ -39,6 +39,23 @@ import kotlinx.coroutines.withContext
 
 
 
+/** Where the current music queue came from; drives refill and the queue
+ *  panel's context line. */
+sealed interface MusicQueueSource {
+    data object None : MusicQueueSource
+    data object ListSource : MusicQueueSource
+    data class RadioSong(val seedId: String) : MusicQueueSource
+    data class RadioPlaylist(val playlistId: String) : MusicQueueSource
+}
+
+/** Same-process bridge so the playback service's ForwardingPlayer can route
+ *  notification next/previous actions into this state. The service and the
+ *  UI live in the same process, so plain volatile hooks are enough. */
+object PlayerNotificationHooks {
+    @Volatile var onNext: (() -> Unit)? = null
+    @Volatile var onPrevious: (() -> Unit)? = null
+}
+
 @Stable
 class PlayerState(private val scope: CoroutineScope) {
     var controller by mutableStateOf<MediaController?>(null)
@@ -100,7 +117,7 @@ class PlayerState(private val scope: CoroutineScope) {
     fun skipNext() {
 
         if (isMusicMode && musicQueue.isNotEmpty()) {
-            openMusicQueue(musicQueue, 0, expanded)
+            consumeMusicHead()
             return
         }
         if (!isMusicMode && queue.isNotEmpty()) {
@@ -274,6 +291,24 @@ class PlayerState(private val scope: CoroutineScope) {
     var musicQueue by mutableStateOf<List<VideoItem>>(emptyList())
         private set
 
+    /** Continuation token for the living music queue: while non-null the
+     *  queue can grow by fetching the next watch-next page. */
+    var musicContinuation by mutableStateOf<String?>(null)
+        private set
+
+    var musicQueueSource by mutableStateOf<MusicQueueSource>(MusicQueueSource.None)
+        private set
+
+    /** Bumped whenever the queue context is replaced wholesale, so stale
+     *  refill/radio coroutines can drop their results. */
+    private var musicQueueGeneration = 0
+    private var refillInFlight = false
+
+    /** Related list diversified for display only (near-duplicate titles
+     *  dropped, max 2 per channel). Autoplay keeps using details.related. */
+    var displayRelated by mutableStateOf<List<VideoItem>>(emptyList())
+        private set
+
     fun open(item: VideoItem, expand: Boolean = true) {
         isMusicMode = false
         AudioOnly.set(false)
@@ -286,21 +321,146 @@ class PlayerState(private val scope: CoroutineScope) {
 
     fun openMusic(item: VideoItem, expand: Boolean = true) {
         openMusicQueue(listOf(item), 0, expand)
+        // A single song opens with an empty queue: seed it with the song's
+        // radio so up-next fills with the same artist / genre.
+        seedRadioFor(item)
     }
 
-    
+    /** Fetches the radio for [item] and adopts it as the up-next queue, but
+     *  only if nothing else has taken over the queue in the meantime. */
+    private fun seedRadioFor(item: VideoItem) {
+        val gen = musicQueueGeneration
+        scope.launch {
+            runCatching { InnerTube.musicRadio(item.id) }.onSuccess { page ->
+                if (gen != musicQueueGeneration || !isMusicMode) return@onSuccess
+                if (current?.id != item.id || musicQueue.isNotEmpty()) return@onSuccess
+                musicQueue = page.items.filter { it.id != item.id }
+                musicContinuation = page.continuation
+                musicQueueSource = MusicQueueSource.RadioSong(item.id)
+            }
+        }
+    }
 
-
-
-    fun openMusicQueue(items: List<VideoItem>, index: Int, expand: Boolean = true) {
+    fun openMusicQueue(
+        items: List<VideoItem>,
+        index: Int,
+        expand: Boolean = true,
+        continuation: String? = null,
+        source: MusicQueueSource = MusicQueueSource.ListSource,
+    ) {
         val item = items.getOrNull(index) ?: return
         isMusicMode = true
         applyVideoTrack()
+        musicQueueGeneration++
         musicQueue = items.drop(index + 1).filter { it.id != item.id }
+        musicContinuation = continuation
+        musicQueueSource = source
+        // Pre-resolve the first upcoming streams so skipping feels instant.
+        musicQueue.take(2).forEach { StreamCache.prefetch(it.id) }
         if (expand) expanded = true
         if (current?.id == item.id && error == null) return
         known[item.id] = item
         show(item, startPlayback = true)
+    }
+
+    private fun nextMusicIndex(): Int =
+        if (shuffleEnabled && musicQueue.size > 1) musicQueue.indices.random() else 0
+
+    /** Plays the head of the music queue (a random entry while shuffled),
+     *  preserving the queue's continuation and source, then tops the queue
+     *  back up if it is running low. */
+    private fun consumeMusicHead() {
+        if (musicQueue.isEmpty()) return
+        val idx = nextMusicIndex()
+        val rotated = if (idx == 0) musicQueue else musicQueue.drop(idx) + musicQueue.take(idx)
+        openMusicQueue(rotated, 0, expanded, continuation = musicContinuation, source = musicQueueSource)
+        maybeRefillMusicQueue()
+    }
+
+    /** Fetches the next watch-next page when the queue runs low. [after]
+     *  runs on the main scope once fresh items have been appended. */
+    fun maybeRefillMusicQueue(after: (() -> Unit)? = null) {
+        if (!isMusicMode) return
+        val token = musicContinuation ?: return
+        if (refillInFlight || musicQueue.size > 5) return
+        refillInFlight = true
+        val gen = musicQueueGeneration
+        scope.launch {
+            val page = runCatching { InnerTube.musicNext(continuation = token) }.getOrNull()
+            refillInFlight = false
+            if (page == null) return@launch
+            if (gen != musicQueueGeneration || !isMusicMode) return@launch
+            val seen = HashSet<String>()
+            current?.id?.let { seen.add(it) }
+            musicQueue.forEach { seen.add(it.id) }
+            val fresh = page.items.filter { seen.add(it.id) }
+            if (fresh.isNotEmpty()) musicQueue = musicQueue + fresh
+            musicContinuation = page.continuation
+            after?.invoke()
+        }
+    }
+
+    fun playFromMusicQueue(index: Int) {
+        if (index !in musicQueue.indices) return
+        openMusicQueue(musicQueue, index, expanded, continuation = musicContinuation, source = musicQueueSource)
+    }
+
+    fun removeFromMusicQueue(index: Int) {
+        if (index !in musicQueue.indices) return
+        musicQueue = musicQueue.filterIndexed { i, _ -> i != index }
+    }
+
+    fun moveMusicQueue(from: Int, to: Int) {
+        if (from !in musicQueue.indices || to !in musicQueue.indices || from == to) return
+        val list = musicQueue.toMutableList()
+        val moved = list.removeAt(from)
+        list.add(to, moved)
+        musicQueue = list
+    }
+
+    fun clearMusicQueue() {
+        musicQueue = emptyList()
+        musicContinuation = null
+        musicQueueSource = MusicQueueSource.None
+        musicQueueGeneration++
+    }
+
+    /** Starts a radio from [item]: replaces the up-next of the currently
+     *  playing song, or plays the song and seeds its radio. */
+    fun startRadio(item: VideoItem) {
+        known[item.id] = item
+        if (isMusicMode && current?.id == item.id) {
+            scope.launch {
+                runCatching { InnerTube.musicRadio(item.id) }.onSuccess { page ->
+                    if (!isMusicMode || current?.id != item.id) return@onSuccess
+                    musicQueue = page.items.filter { it.id != item.id }
+                    musicContinuation = page.continuation
+                    musicQueueSource = MusicQueueSource.RadioSong(item.id)
+                    musicQueueGeneration++
+                    actionMessage = I18n.t("radio_started_toast", "Radio started from {title}")
+                        .replace("{title}", item.title)
+                }
+            }
+        } else {
+            openMusicQueue(listOf(item), 0, expand = true)
+            seedRadioFor(item)
+        }
+    }
+
+    fun startPlaylistRadio(playlistId: String) {
+        scope.launch {
+            runCatching { InnerTube.musicPlaylistRadio(playlistId) }.onSuccess { page ->
+                if (page.items.isEmpty()) return@onSuccess
+                val idx = if (page.currentIndex in page.items.indices) page.currentIndex else 0
+                openMusicQueue(
+                    page.items,
+                    idx,
+                    expand = true,
+                    continuation = page.continuation,
+                    source = MusicQueueSource.RadioPlaylist(playlistId),
+                )
+            }
+        }
     }
 
     fun playNextMusic(item: VideoItem) {
@@ -336,6 +496,7 @@ class PlayerState(private val scope: CoroutineScope) {
         current = item
         if (isMusicMode) RecentMusic.record(item)
         details = null
+        displayRelated = emptyList()
         error = null
         firstFrameRendered = false
         videoAspect = 16f / 9f
@@ -386,6 +547,18 @@ class PlayerState(private val scope: CoroutineScope) {
                 .onSuccess { d ->
                     Log.i("LePlayTime", "details +${android.os.SystemClock.elapsedRealtime() - openedAt}ms")
                     details = d
+                    displayRelated = diversifyRelated(d.related, item)
+                    // Pre-resolve the likely next streams in the background
+                    // so switching tracks does not pay the full lookup cost.
+                    val nextIds = if (isMusicMode) {
+                        musicQueue.take(2).map { it.id }
+                    } else {
+                        listOfNotNull(
+                            queue.firstOrNull()?.id,
+                            pickUpNextFrom(d.related.filter { it.id != item.id }, d.item)?.id,
+                        )
+                    }
+                    nextIds.distinct().forEach { id -> if (id != item.id) StreamCache.prefetch(id) }
                     refreshTracks()
 
                     if (!aspectFromFrames) d.aspect?.let { videoAspect = it }
@@ -537,39 +710,102 @@ class PlayerState(private val scope: CoroutineScope) {
         uploaded = null,
     ).also { known[media.mediaId] = it }
 
+    /** Display-only diversification of a related list: drops entries whose
+     *  normalized title duplicates an earlier kept one and caps each
+     *  channel at 2 entries, keeping server order. */
+    private fun diversifyRelated(related: List<VideoItem>, currentItem: VideoItem): List<VideoItem> {
+        val seenTitles = HashSet<String>()
+        val channelCounts = HashMap<String, Int>()
+        val out = ArrayList<VideoItem>()
+        val noise = setOf("playlist", "full", "mix")
+        for (entry in related) {
+            if (entry.id == currentItem.id) continue
+            val normalized = entry.title.lowercase()
+                .replace(Regex("[^a-z0-9 ]"), " ")
+                .split(Regex("\\s+"))
+                .filter { it.isNotBlank() && it !in noise }
+                .joinToString(" ")
+            if (!seenTitles.add(normalized)) continue
+            val channelKey = entry.channel.lowercase()
+            val count = channelCounts.getOrDefault(channelKey, 0)
+            if (count >= 2) continue
+            channelCounts[channelKey] = count + 1
+            out.add(entry)
+        }
+        return out
+    }
+
+    /** The video up-next pick: a video from the same channel first, else
+     *  the first related entry. [related] must already exclude the current
+     *  video. Shared by autoplay and the next-item prefetch. */
+    private fun pickUpNextFrom(related: List<VideoItem>, curr: VideoItem): VideoItem? =
+        related.firstOrNull { it.channel.equals(curr.channel, ignoreCase = true) } ?: related.firstOrNull()
+
     private fun autoPlayNext() {
         val curr = current ?: return
         val currId = curr.id
 
-        if (isMusicMode && musicQueue.isNotEmpty()) {
-            skipNext()
+        if (isMusicMode) {
+            autoPlayNextMusic()
             return
         }
         val relList = details?.related.orEmpty().filter { it.id != currId }
 
-        val next = if (isMusicMode) {
-            relList.firstOrNull { isMusicTrack(it) } ?: relList.firstOrNull()
-        } else {
-            relList.firstOrNull { it.channel.equals(curr.channel, ignoreCase = true) } ?: relList.firstOrNull()
-        }
+        val next = pickUpNextFrom(relList, curr)
         if (next != null) {
             actionMessage = I18n.t("up_next", "Up next: {title}").replace("{title}", next.title)
-            if (isMusicMode) openMusic(next, expand = expanded) else open(next, expand = expanded)
+            open(next, expand = expanded)
         } else {
             scope.launch {
                 runCatching { YouTube.details(currId) }
                     .onSuccess { d ->
                         val list = d.related.filter { it.id != currId }
-                        val rel = if (isMusicMode) {
-                            list.firstOrNull { isMusicTrack(it) } ?: list.firstOrNull()
-                        } else {
-                            list.firstOrNull { it.channel.equals(curr.channel, ignoreCase = true) } ?: list.firstOrNull()
-                        }
+                        val rel = pickUpNextFrom(list, curr)
                         if (rel != null) {
                             actionMessage = I18n.t("up_next", "Up next: {title}").replace("{title}", rel.title)
-                            if (isMusicMode) openMusic(rel, expand = expanded) else open(rel, expand = expanded)
+                            open(rel, expand = expanded)
                         }
                     }
+            }
+        }
+    }
+
+    /** Music autoplay: consume the living queue; refill it when it runs
+     *  dry; when nothing is left at all, fall into the finished song's
+     *  radio so playback keeps flowing in the same genre. */
+    private fun autoPlayNextMusic() {
+        val curr = current ?: return
+        if (musicQueue.isNotEmpty()) {
+            consumeMusicHead()
+            return
+        }
+        if (musicContinuation != null) {
+            val gen = musicQueueGeneration
+            val finishedId = curr.id
+            maybeRefillMusicQueue {
+                if (gen == musicQueueGeneration && isMusicMode &&
+                    current?.id == finishedId && musicQueue.isNotEmpty()
+                ) {
+                    consumeMusicHead()
+                }
+            }
+            return
+        }
+        val finished = curr
+        scope.launch {
+            runCatching { InnerTube.musicRadio(finished.id) }.onSuccess { page ->
+                if (!isMusicMode || current?.id != finished.id) return@onSuccess
+                val rest = page.items.filter { it.id != finished.id }
+                if (rest.isNotEmpty()) {
+                    actionMessage = I18n.t("up_next", "Up next: {title}").replace("{title}", rest.first().title)
+                    openMusicQueue(
+                        rest,
+                        0,
+                        expanded,
+                        continuation = page.continuation,
+                        source = MusicQueueSource.RadioSong(finished.id),
+                    )
+                }
             }
         }
     }
@@ -1171,6 +1407,10 @@ fun rememberPlayerState(): PlayerState {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state = remember { PlayerState(scope) }
+    // Same-process hooks for the playback notification's next/previous
+    // actions (consumed by PlaybackService's ForwardingPlayer).
+    PlayerNotificationHooks.onNext = { state.skipNext() }
+    PlayerNotificationHooks.onPrevious = { state.skipPrevious() }
     DisposableEffect(context) {
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
         val future = MediaController.Builder(context, token).buildAsync()

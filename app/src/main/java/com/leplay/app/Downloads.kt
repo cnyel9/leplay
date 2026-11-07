@@ -139,6 +139,7 @@ object Downloads {
 
     private lateinit var dir: File
     private lateinit var prefs: android.content.SharedPreferences
+    @Volatile private var appContext: Context? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobs = ConcurrentHashMap<String, kotlinx.coroutines.Job>()
     private val pumpLock = Any()
@@ -156,6 +157,7 @@ object Downloads {
 
     fun init(context: Context) {
         if (initialized) return
+        appContext = context.applicationContext
         prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val customPath = prefs.getString(KEY_CUSTOM_DIR, null)
         val targetDir = if (!customPath.isNullOrBlank()) {
@@ -337,6 +339,7 @@ object Downloads {
         ) return
         task.status = DownloadStatus.Paused
         jobs.remove(task.key)?.cancel()
+        cancelNotification(task)
         persist()
         pump()
     }
@@ -354,6 +357,7 @@ object Downloads {
 
     fun remove(task: DownloadTask) {
         jobs.remove(task.key)?.cancel()
+        cancelNotification(task)
         tasks.remove(task)
         deleteWork(task)
         task.file.delete()
@@ -433,6 +437,7 @@ object Downloads {
             task.error = t.message ?: "Download failed"
             task.status = DownloadStatus.Failed
             deleteWork(task)
+            notifyFinished(task, failed = true)
         } finally {
             jobs.remove(task.key)
             persist()
@@ -465,6 +470,7 @@ object Downloads {
             task.total = target.length()
             task.downloaded = task.total
             task.status = DownloadStatus.Complete
+            notifyFinished(task, failed = false)
             return
         }
 
@@ -538,6 +544,7 @@ object Downloads {
 
         task.error = null
         task.status = DownloadStatus.Complete
+        notifyFinished(task, failed = false)
         persist()
         Log.i(TAG, "download ${task.key} complete: ${task.file.length()} bytes")
     }
@@ -548,12 +555,106 @@ object Downloads {
         if (now - last >= 120L) {
             lastReport[task.key] = now
             task.downloaded = done.coerceAtMost(if (task.total > 0) task.total else done)
+            notifyProgress(task)
             val lastSaved = lastPersist[task.key] ?: 0L
             if (now - lastSaved >= 2_000L) {
                 lastPersist[task.key] = now
                 persist()
             }
         }
+    }
+
+    // --- Download notifications -------------------------------------------------
+
+    private const val DOWNLOAD_CHANNEL_ID = "downloads"
+    const val ACTION_CANCEL_DOWNLOAD = "com.leplay.app.CANCEL_DOWNLOAD"
+
+    private fun notificationManager(ctx: Context): android.app.NotificationManager =
+        ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+
+    private fun ensureDownloadChannel(ctx: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = notificationManager(ctx)
+            if (manager.getNotificationChannel(DOWNLOAD_CHANNEL_ID) == null) {
+                manager.createNotificationChannel(
+                    android.app.NotificationChannel(
+                        DOWNLOAD_CHANNEL_ID,
+                        I18n.t("download_channel_name", "Downloads"),
+                        android.app.NotificationManager.IMPORTANCE_LOW,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun openAppIntent(ctx: Context): android.app.PendingIntent =
+        android.app.PendingIntent.getActivity(
+            ctx, 0,
+            android.content.Intent(ctx, MainActivity::class.java)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
+    private fun notifyProgress(task: DownloadTask) {
+        val ctx = appContext ?: return
+        runCatching {
+            ensureDownloadChannel(ctx)
+            val percent = if (task.total > 0) {
+                ((task.downloaded * 100) / task.total).toInt().coerceIn(0, 100)
+            } else {
+                0
+            }
+            val cancelIntent = android.app.PendingIntent.getBroadcast(
+                ctx,
+                task.key.hashCode(),
+                android.content.Intent(ACTION_CANCEL_DOWNLOAD)
+                    .setPackage(ctx.packageName)
+                    .putExtra(DownloadCancelReceiver.EXTRA_TASK_KEY, task.key),
+                android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val notification = androidx.core.app.NotificationCompat.Builder(ctx, DOWNLOAD_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle(task.title)
+                .setContentText("$percent%")
+                .setProgress(100, percent, task.total <= 0)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setContentIntent(openAppIntent(ctx))
+                .addAction(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    I18n.t("download_cancel", "Cancel"),
+                    cancelIntent,
+                )
+                .build()
+            notificationManager(ctx).notify(task.key.hashCode(), notification)
+        }
+    }
+
+    private fun notifyFinished(task: DownloadTask, failed: Boolean) {
+        val ctx = appContext ?: return
+        runCatching {
+            ensureDownloadChannel(ctx)
+            val notification = androidx.core.app.NotificationCompat.Builder(ctx, DOWNLOAD_CHANNEL_ID)
+                .setSmallIcon(
+                    if (failed) android.R.drawable.stat_notify_error else android.R.drawable.stat_sys_download_done,
+                )
+                .setContentTitle(task.title)
+                .setContentText(
+                    I18n.t(
+                        if (failed) "download_failed" else "download_complete",
+                        if (failed) "Download failed" else "Download complete",
+                    ),
+                )
+                .setAutoCancel(true)
+                .setContentIntent(openAppIntent(ctx))
+                .build()
+            notificationManager(ctx).notify(task.key.hashCode(), notification)
+        }
+    }
+
+    private fun cancelNotification(task: DownloadTask) {
+        val ctx = appContext ?: return
+        runCatching { notificationManager(ctx).cancel(task.key.hashCode()) }
     }
 
 
@@ -905,3 +1006,17 @@ fun DownloadTask.toVideoItem(): VideoItem = VideoItem(
     uploaded = null,
     localUri = localUri,
 )
+
+/** Handles the Cancel action on a download progress notification: pauses
+ *  the matching task (which also clears its notification). */
+class DownloadCancelReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: android.content.Intent) {
+        if (intent.action != Downloads.ACTION_CANCEL_DOWNLOAD) return
+        val key = intent.getStringExtra(EXTRA_TASK_KEY) ?: return
+        Downloads.tasks.firstOrNull { it.key == key }?.let { Downloads.pause(it) }
+    }
+
+    companion object {
+        const val EXTRA_TASK_KEY = "task_key"
+    }
+}

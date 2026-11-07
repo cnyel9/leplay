@@ -47,7 +47,10 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -255,14 +258,27 @@ val LocalVideoMenu = staticCompositionLocalOf<(VideoItem) -> Unit> { {} }
 
 @Composable
 fun Thumbnail(url: String?, modifier: Modifier = Modifier, radius: Int = 22, videoId: String? = null) {
-    val model = remember(url, videoId) {
-        val id = videoId ?: url?.let(::ytVideoIdFromThumbUrl)
-        if (id != null) sharpenFeedThumbnail(url, id) else url
+    val videoIdForFallback = remember(url, videoId) { videoId ?: url?.let(::ytVideoIdFromThumbUrl) }
+    var model by remember(url, videoId) {
+        mutableStateOf<String?>(
+            if (videoIdForFallback != null) sharpenFeedThumbnail(url, videoIdForFallback) else url,
+        )
     }
+    var attemptedFallback by remember(url, videoId) { mutableStateOf(false) }
     AsyncImage(
         model = ImageRequest.Builder(LocalContext.current).data(model).crossfade(!GlassSettings.liteMode).build(),
         contentDescription = null,
         contentScale = ContentScale.Crop,
+        onError = {
+            // Feed thumbnails occasionally point at a rendition the CDN
+            // refuses; fall back once to the always-present hqdefault.
+            val id = videoIdForFallback
+            if (!attemptedFallback && id != null) {
+                attemptedFallback = true
+                val fallback = "https://i.ytimg.com/vi/$id/hqdefault.jpg"
+                if (model != fallback) model = fallback
+            }
+        },
         modifier = modifier
             .clip(RoundedCornerShape(radius.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHighest),

@@ -72,6 +72,18 @@ data class MusicShelf(
 )
 
 @Immutable
+data class MusicNextPage(
+    val items: List<VideoItem>,
+    val currentIndex: Int,
+    val continuation: String?,
+    val lyricsEndpoint: String?,
+    val relatedEndpoint: String?,
+    val queueTitle: String?,
+    val automixVideoId: String? = null,
+    val automixPlaylistId: String? = null,
+)
+
+@Immutable
 data class ChannelRef(val id: String, val name: String, val avatar: String?) {
     val url: String get() = "https://www.youtube.com/channel/$id"
 }
@@ -1430,6 +1442,189 @@ object InnerTube {
             }
         }
         return out
+    }
+
+    internal fun parseMusicNext(root: JSONObject): MusicNextPage {
+        // Continuation responses carry the panel directly; first responses
+        // bury it inside the tabbed watch-next results.
+        val continuationPanel = root.optJSONObject("continuationContents")
+            ?.optJSONObject("playlistPanelContinuation")
+        val tabbed = root.optJSONObject("contents")
+            ?.optJSONObject("singleColumnMusicWatchNextResultsRenderer")
+            ?.optJSONObject("tabbedRenderer")
+            ?.optJSONObject("watchNextTabbedResultsRenderer")
+        val tabs = tabbed?.optJSONArray("tabs")
+        val firstTabContent = tabs?.optJSONObject(0)
+            ?.optJSONObject("tabRenderer")
+            ?.optJSONObject("content")
+        val queueRenderer = firstTabContent?.optJSONObject("musicQueueRenderer")
+        val panel = continuationPanel
+            ?: queueRenderer?.optJSONObject("content")?.optJSONObject("playlistPanelRenderer")
+
+        val items = mutableListOf<VideoItem>()
+        var currentIndex = -1
+        var automixVideoId: String? = null
+        var automixPlaylistId: String? = null
+        val contents = panel?.optJSONArray("contents")
+        if (contents != null) {
+            for (i in 0 until contents.length()) {
+                val entry = contents.optJSONObject(i) ?: continue
+                val renderer = entry.optJSONObject("playlistPanelVideoRenderer")
+                if (renderer != null) {
+                    val vid = renderer.optString("videoId").takeIf { it.isNotEmpty() } ?: continue
+                    if (renderer.optBoolean("selected")) currentIndex = items.size
+                    val title = renderer.text("title") ?: "Track"
+                    val artist = renderer.text("longBylineText") ?: renderer.text("shortBylineText") ?: ""
+                    val thumb = highResMusicThumbnail(
+                        renderer.optJSONObject("thumbnail")?.thumbnails()?.lastOrNull()
+                    )
+                    items.add(
+                        VideoItem(
+                            id = vid,
+                            title = title,
+                            channel = artist,
+                            channelUrl = null,
+                            thumbnail = thumb,
+                            avatar = null,
+                            durationSec = renderer.text("lengthText")?.let(::parseDuration) ?: 0L,
+                            views = -1L,
+                            uploaded = "YouTube Music",
+                        )
+                    )
+                } else if (i == contents.length() - 1) {
+                    val automix = entry.optJSONObject("automixPreviewVideoRenderer")
+                    val watch = automix?.optJSONObject("content")
+                        ?.optJSONObject("automixPlaylistVideoRenderer")
+                        ?.optJSONObject("navigationEndpoint")
+                        ?.optJSONObject("watchPlaylistEndpoint")
+                        ?: automix?.optJSONObject("thumbnail")
+                            ?.optJSONObject("musicThumbnailRenderer")
+                            ?.optJSONObject("onTap")
+                            ?.optJSONObject("watchPlaylistEndpoint")
+                    val pid = watch?.optString("playlistId")?.takeIf { it.isNotEmpty() }
+                    val vid = watch?.optString("videoId")?.takeIf { it.isNotEmpty() }
+                    if (pid != null || vid != null) {
+                        automixVideoId = vid
+                        automixPlaylistId = pid
+                    }
+                }
+            }
+        }
+
+        val continuation = panel?.optJSONArray("continuations")
+            ?.optJSONObject(0)
+            ?.optJSONObject("nextContinuationData")
+            ?.optString("continuation")
+            ?.takeIf { it.isNotBlank() }
+
+        // Tabs only ship on the first response: harvest the lyrics and
+        // related browse endpoints like musicLyrics does for lyrics.
+        var lyricsEndpoint: String? = null
+        var relatedEndpoint: String? = null
+        if (tabs != null) {
+            for (i in 0 until tabs.length()) {
+                val tab = tabs.optJSONObject(i)?.optJSONObject("tabRenderer") ?: continue
+                val bId = tab.optJSONObject("endpoint")
+                    ?.optJSONObject("browseEndpoint")
+                    ?.optString("browseId")
+                    ?.takeIf { it.isNotEmpty() } ?: continue
+                val tName = tab.optString("title")
+                when {
+                    bId.startsWith("MPLYt") || tName.equals("Lyrics", ignoreCase = true) ->
+                        if (lyricsEndpoint == null) lyricsEndpoint = bId
+                    !tName.equals("Up next", ignoreCase = true) ->
+                        if (relatedEndpoint == null) relatedEndpoint = bId
+                }
+            }
+        }
+
+        val queueTitle = queueRenderer?.optJSONObject("header")
+            ?.optJSONObject("musicQueueHeaderRenderer")
+            ?.text("subtitle")
+
+        return MusicNextPage(
+            items = items,
+            currentIndex = currentIndex,
+            continuation = continuation,
+            lyricsEndpoint = lyricsEndpoint,
+            relatedEndpoint = relatedEndpoint,
+            queueTitle = queueTitle,
+            automixVideoId = automixVideoId,
+            automixPlaylistId = automixPlaylistId,
+        )
+    }
+
+    suspend fun musicNext(
+        videoId: String? = null,
+        playlistId: String? = null,
+        playlistSetVideoId: String? = null,
+        index: Int? = null,
+        continuation: String? = null,
+    ): MusicNextPage = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+        if (continuation != null) {
+            body.put("continuation", continuation)
+        } else {
+            videoId?.let { body.put("videoId", it) }
+            playlistId?.let { body.put("playlistId", it) }
+            playlistSetVideoId?.let { body.put("playlistSetVideoId", it) }
+            index?.let { body.put("index", it) }
+        }
+        var page = parseMusicNext(postMusic("next", body))
+        // Automix unwrap, at most once: a plain queue whose tail is an
+        // automix preview continues as that automix watch playlist.
+        val mixPid = page.automixPlaylistId
+        val mixVid = page.automixVideoId
+        if (page.items.isNotEmpty() && (mixPid != null || mixVid != null)) {
+            runCatching {
+                val mixBody = JSONObject()
+                mixVid?.let { mixBody.put("videoId", it) }
+                mixPid?.let { mixBody.put("playlistId", it) }
+                val mixPage = parseMusicNext(postMusic("next", mixBody))
+                if (mixPage.items.isNotEmpty()) {
+                    val seedIds = page.items.map { it.id }.toHashSet()
+                    val tail = mixPage.items.dropWhile { it.id in seedIds && it.id == page.items.firstOrNull()?.id }
+                        .filter { it.id !in seedIds }
+                    page = page.copy(
+                        items = page.items + tail,
+                        continuation = mixPage.continuation ?: page.continuation,
+                        automixVideoId = null,
+                        automixPlaylistId = null,
+                    )
+                }
+            }
+        }
+        page
+    }
+
+    suspend fun musicRadio(videoId: String): MusicNextPage {
+        val first = runCatching { musicNext(videoId = videoId, playlistId = "RDAMVM$videoId") }
+            .getOrElse { MusicNextPage(emptyList(), -1, null, null, null, null) }
+        if (first.items.size > 1) return first
+        val bare = runCatching { musicNext(videoId = videoId) }
+            .getOrElse { MusicNextPage(emptyList(), -1, null, null, null, null) }
+        if (bare.items.size > 1) return bare
+        val base = if (bare.items.isNotEmpty()) bare else first
+        val endpoint = base.relatedEndpoint ?: first.relatedEndpoint
+        if (endpoint != null && base.items.isNotEmpty()) {
+            val related = runCatching { musicRelated(endpoint) }.getOrDefault(emptyList())
+            val seedId = base.items.firstOrNull()?.id
+            val extra = related.filter { it.id != seedId && it.id != videoId }
+            if (extra.isNotEmpty()) {
+                return base.copy(items = base.items + extra)
+            }
+        }
+        return base
+    }
+
+    suspend fun musicPlaylistRadio(playlistId: String): MusicNextPage =
+        musicNext(playlistId = "RDAMPL$playlistId")
+
+    suspend fun musicRelated(browseId: String): List<VideoItem> = withContext(Dispatchers.IO) {
+        runCatching {
+            collectMusicSongs(postMusic("browse", JSONObject().put("browseId", browseId)))
+                .distinctBy { it.id }
+        }.getOrDefault(emptyList())
     }
 
     suspend fun resolveMusicItem(item: MusicShelfItem): VideoItem? = withContext(Dispatchers.IO) {

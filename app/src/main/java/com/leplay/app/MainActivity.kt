@@ -393,33 +393,31 @@ fun LePlayTubeApp() {
 
     fun handleIntent(inIntent: Intent?) {
         val target = parseIncomingIntent(inIntent) ?: return
-        if (target.isShort) {
-            shortsEntry = VideoItem(
-                id = target.videoId,
-                title = "",
-                channel = "",
-                channelUrl = null,
-                thumbnail = "https://i.ytimg.com/vi/${target.videoId}/hqdefault.jpg",
-                avatar = null,
-                durationSec = 0L,
-                views = 0L,
-                uploaded = null,
-            )
-        } else {
-            player.open(
-                VideoItem(
-                    id = target.videoId,
-                    title = "",
-                    channel = "",
-                    channelUrl = null,
-                    thumbnail = "https://i.ytimg.com/vi/${target.videoId}/hqdefault.jpg",
-                    avatar = null,
-                    durationSec = 0L,
-                    views = 0L,
-                    uploaded = null,
-                )
-            )
-            player.expanded = true
+        if (target.videoId.isBlank()) {
+            // Playlist-only link: open the playlist screen.
+            target.playlistId?.let { pid ->
+                openPlaylist = PlaylistRef(pid.removePrefix("VL"), "", null, null)
+            }
+            return
+        }
+        val stub = VideoItem(
+            id = target.videoId,
+            title = "",
+            channel = "",
+            channelUrl = null,
+            thumbnail = "https://i.ytimg.com/vi/${target.videoId}/hqdefault.jpg",
+            avatar = null,
+            durationSec = 0L,
+            views = 0L,
+            uploaded = null,
+        )
+        when {
+            target.isShort -> shortsEntry = stub
+            target.isMusic -> player.openMusic(stub)
+            else -> {
+                player.open(stub)
+                player.expanded = true
+            }
         }
     }
 
@@ -614,6 +612,8 @@ fun LePlayTubeApp() {
                     lib, contentPadding, onOpen = player::openMusic, onSearch = { openSearch = true },
                     onAccount = { openSettings = true },
                     onPlayNext = player::playNextMusic,
+                    onStartRadio = player::startRadio,
+                    onStartPlaylistRadio = player::startPlaylistRadio,
                     onOpenQueue = { items, index -> player.openMusicQueue(items, index) },
                     scrollToTop = scrollToTop[Tab.Music] ?: 0,
                 )
@@ -1176,7 +1176,12 @@ private fun NavPill(selected: Tab, onSelect: (Tab) -> Unit, modifier: Modifier =
     }
 }
 
-internal data class YouTubeLinkTarget(val videoId: String, val isShort: Boolean)
+internal data class YouTubeLinkTarget(
+    val videoId: String,
+    val isShort: Boolean,
+    val playlistId: String? = null,
+    val isMusic: Boolean = false,
+)
 
 internal fun parseIncomingIntent(intent: Intent?): YouTubeLinkTarget? {
     if (intent == null) return null
@@ -1190,15 +1195,21 @@ internal fun parseIncomingIntent(intent: Intent?): YouTubeLinkTarget? {
 
 internal fun parseYouTubeLink(text: String): YouTubeLinkTarget? {
     if (text.isBlank()) return null
-    val urlRegex = Regex("""(?i)\b(?:https?://|vnd\.youtube:)?(?:(?:www\.|m\.)?youtube\.com/(?:watch\?(?:.*&)?v=|shorts/|live/|embed/|v/)|youtu\.be/)([\w-]{11})""")
+    val isMusic = text.contains("music.youtube.com", ignoreCase = true)
+    val playlistId = Regex("""[?&]list=([\w-]+)""").find(text)?.groupValues?.get(1)
+    val urlRegex = Regex("""(?i)\b(?:https?://|vnd\.youtube:)?(?:(?:www\.|m\.|music\.)?youtube\.com/(?:watch\?(?:.*&)?v=|shorts/|live/|embed/|v/)|youtu\.be/)([\w-]{11})""")
     val match = urlRegex.find(text)
     if (match != null) {
         val videoId = match.groupValues[1]
         val isShort = text.contains("/shorts/", ignoreCase = true)
-        return YouTubeLinkTarget(videoId, isShort)
+        return YouTubeLinkTarget(videoId, isShort, playlistId = playlistId, isMusic = isMusic)
     }
     if (text.matches(Regex("""^[\w-]{11}$"""))) {
         return YouTubeLinkTarget(text, false)
+    }
+    // Playlist-only link (no video id): route to the playlist screen.
+    if (playlistId != null && text.contains("youtube.com", ignoreCase = true)) {
+        return YouTubeLinkTarget("", false, playlistId = playlistId, isMusic = isMusic)
     }
     return null
 }

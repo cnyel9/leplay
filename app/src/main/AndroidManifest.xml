@@ -45,8 +45,9 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
 
-            <!-- YouTube web URLs -->
-            <intent-filter android:autoVerify="true">
+            <!-- YouTube web URLs (plain BROWSABLE: the system chooser
+                 offers LePlay beside the official app) -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -60,10 +61,23 @@
                 <data android:pathPrefix="/live" />
                 <data android:pathPrefix="/embed" />
                 <data android:pathPrefix="/v" />
+                <data android:pathPrefix="/playlist" />
+            </intent-filter>
+
+            <!-- YouTube Music web URLs -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="music.youtube.com" />
+                <data android:pathPrefix="/watch" />
+                <data android:pathPrefix="/playlist" />
             </intent-filter>
 
             <!-- youtu.be short links -->
-            <intent-filter android:autoVerify="true">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -97,6 +111,14 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <receiver
+            android:name=".DownloadCancelReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.leplay.app.CANCEL_DOWNLOAD" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -81,6 +81,46 @@ data class UpdateInfo(
     val sizeBytes: Long,
 )
 
+@Immutable
+data class ReleaseEntry(
+    val version: String,
+    val tag: String,
+    val name: String,
+    val body: String,
+    val publishedAt: String,
+    val prerelease: Boolean,
+)
+
+/** Full release list for the About version-history screen, newest first. */
+suspend fun fetchReleaseHistory(): List<ReleaseEntry> = withContext(Dispatchers.IO) {
+    val request = Request.Builder()
+        .url("https://api.github.com/repos/cnyel9/leplay/releases?per_page=100")
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "LePlay/${BuildConfig.VERSION_NAME}")
+        .build()
+    Net.client.newCall(request).execute().use { response ->
+        if (!response.isSuccessful) error("GitHub releases returned ${response.code}")
+        val array = org.json.JSONArray(response.body?.string().orEmpty())
+        val out = ArrayList<ReleaseEntry>()
+        for (i in 0 until array.length()) {
+            val json = array.optJSONObject(i) ?: continue
+            if (json.optBoolean("draft")) continue
+            val tag = json.optString("tag_name").ifBlank { continue }
+            out.add(
+                ReleaseEntry(
+                    version = tag.removePrefix("v").removePrefix("V").trim(),
+                    tag = tag,
+                    name = json.optString("name").ifBlank { tag },
+                    body = json.optString("body").orEmpty(),
+                    publishedAt = json.optString("published_at"),
+                    prerelease = json.optBoolean("prerelease"),
+                ),
+            )
+        }
+        out
+    }
+}
+
 /**
  * Shown when the GitHub release body is empty (or when testing an APK that is
  * newer than the latest published release). Keep this in sync with the build.
@@ -413,11 +453,9 @@ fun UpdateOverlay(state: UpdateState, backdrop: Backdrop) {
                         color = c.onSurface.copy(alpha = 0.92f),
                         fontSize = 13.5.sp,
                         lineHeight = 20.sp,
-                        maxLines = 9,
-                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 172.dp)
+                            .heightIn(max = 300.dp)
                             .verticalScroll(rememberScrollState()),
                     )
 

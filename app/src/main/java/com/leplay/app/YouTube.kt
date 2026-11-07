@@ -313,8 +313,13 @@ object YouTube {
 
         if (!parsed.isNullOrEmpty()) return parsed
 
+        // Last resort: search, but with the title cut at its first
+        // separator so compilations ("X | Late Night Drive Playlist")
+        // do not drag every result into the exact same topic.
+        val cutTitle = title.substringBefore("|").substringBefore(" - ").trim()
+        val query = if (cutTitle.length >= 4) cutTitle else title
         return runCatching {
-            search(title).filter { it.id != id }
+            search(query).filter { it.id != id }
         }.getOrDefault(emptyList())
     }
 
