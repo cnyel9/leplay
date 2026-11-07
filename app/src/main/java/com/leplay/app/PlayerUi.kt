@@ -189,6 +189,7 @@ fun PlayerScreen(
     val c = MaterialTheme.colorScheme
     val item = state.current ?: return
     val isLiveStream = state.details?.item?.isLive == true || item.isLive
+    val hasChatReplay = !isLiveStream && state.chatReplay.available
     LaunchedEffect(state.sheet, item.id, isLiveStream) {
         if (state.sheet == PlayerSheet.Comments && isLiveStream) {
             val channelHint = state.details?.item?.channelUrl?.substringAfterLast('/')?.takeIf { it.startsWith("UC") }
@@ -354,7 +355,7 @@ fun PlayerScreen(
                         VideoStage(state, morph, onCollapse, onFullscreen, interactive)
                     }
                     if (showDetails) {
-                        VideoDetailsBlock(state, item, details, c, descriptionOpen, { descriptionOpen = !descriptionOpen }, isLiveStream, onHeaderBottom = { detailsHeaderBottom = it })
+                        VideoDetailsBlock(state, item, details, c, descriptionOpen, { descriptionOpen = !descriptionOpen }, isLiveStream, replay = hasChatReplay, onHeaderBottom = { detailsHeaderBottom = it })
                     }
                     Spacer(Modifier.height(bottom + 32.dp))
                 }
@@ -414,7 +415,7 @@ fun PlayerScreen(
                     },
                 contentPadding = PaddingValues(bottom = bottom + 32.dp),
             ) {
-                item(key = "info") { VideoDetailsBlock(state, item, details, c, descriptionOpen, { descriptionOpen = !descriptionOpen }, isLiveStream, onHeaderBottom = { detailsHeaderBottom = it }) }
+                item(key = "info") { VideoDetailsBlock(state, item, details, c, descriptionOpen, { descriptionOpen = !descriptionOpen }, isLiveStream, replay = hasChatReplay, onHeaderBottom = { detailsHeaderBottom = it }) }
                 val related = details?.related.orEmpty()
                 if (related.isNotEmpty()) {
                     item(key = "moreTitle") { SectionTitle("More videos") }
@@ -442,26 +443,36 @@ fun PlayerScreen(
 
         if (state.sheet == PlayerSheet.Comments) {
             val detailItem = state.details?.item
-            if (isLiveStream) {
-                LiveChatPanel(
-                    state.liveChat,
-                    onSignIn = onSignIn,
-                    onClose = { state.sheet = null },
-                )
-            } else {
-                val screenW = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
-                val videoBottom = top + top + (screenW - StageSideGap * 2) / state.stageAspect
-                val fallbackTop = videoBottom + 10.dp
-                val partialTop = detailsHeaderBottom
-                    ?.let { (it + 6.dp).coerceIn(fallbackTop, fallbackTop + 320.dp) }
-                    ?: fallbackTop
-                CommentsPanel(
-                    state.comments,
-                    partialTop = partialTop,
-                    onClose = { state.sheet = null },
-                    creatorAvatar = detailItem?.avatar,
-                    creatorName = detailItem?.channel.orEmpty(),
-                )
+            when {
+                isLiveStream -> {
+                    LiveChatPanel(
+                        state.liveChat,
+                        onSignIn = onSignIn,
+                        onClose = { state.sheet = null },
+                    )
+                }
+                hasChatReplay -> {
+                    ChatReplayPanel(
+                        state = state.chatReplay,
+                        positionMs = state.positionMs,
+                        onClose = { state.sheet = null },
+                    )
+                }
+                else -> {
+                    val screenW = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
+                    val videoBottom = top + top + (screenW - StageSideGap * 2) / state.stageAspect
+                    val fallbackTop = videoBottom + 10.dp
+                    val partialTop = detailsHeaderBottom
+                        ?.let { (it + 6.dp).coerceIn(fallbackTop, fallbackTop + 320.dp) }
+                        ?: fallbackTop
+                    CommentsPanel(
+                        state.comments,
+                        partialTop = partialTop,
+                        onClose = { state.sheet = null },
+                        creatorAvatar = detailItem?.avatar,
+                        creatorName = detailItem?.channel.orEmpty(),
+                    )
+                }
             }
         }
     }
@@ -1936,6 +1947,7 @@ private fun VideoDetailsBlock(
     descriptionOpen: Boolean,
     onToggleDescription: () -> Unit,
     isLiveStream: Boolean,
+    replay: Boolean = false,
     onHeaderBottom: ((androidx.compose.ui.unit.Dp) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
@@ -2017,6 +2029,7 @@ private fun VideoDetailsBlock(
             state.comments,
             onOpen = { state.sheet = PlayerSheet.Comments },
             live = isLiveStream,
+            replay = replay,
         )
     }
 }

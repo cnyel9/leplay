@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Base64
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -79,12 +80,19 @@ data class LiveChatMessage(
     val text: String,
     val avatar: String? = null,
     val pending: Boolean = false,
+    val offsetMs: Long? = null,
 )
 
 internal data class LiveChatPage(
     val messages: List<LiveChatMessage>,
     val next: String?,
     val sendParams: String? = null,
+)
+
+internal data class ReplayPage(
+    val messages: List<LiveChatMessage>,
+    val next: String?,
+    val horizonMs: Long,
 )
 
 internal data class LiveChatStart(
@@ -205,6 +213,103 @@ class LiveChatState(private val scope: CoroutineScope) {
     }
 }
 
+/**
+ * Buffers a past stream's chat replay ahead of the playhead. Detection and
+ * prefetching are silent: when a video has no replay, [available] simply
+ * stays false and no UI ever appears for it.
+ */
+@Stable
+class ChatReplayState(private val scope: CoroutineScope) {
+    var available by mutableStateOf(false)
+        private set
+    var loading by mutableStateOf(false)
+        private set
+    var messages by mutableStateOf<List<LiveChatMessage>>(emptyList())
+        private set
+
+    private var videoId: String? = null
+    private var nextCursor: String? = null
+    private var horizonMs: Long = 0L
+    private var wantedMs: Long = 0L
+    private var job: Job? = null
+
+    /** Probes for a replay and, when one exists, prefetches its first minute. */
+    fun prepare(id: String) {
+        if (videoId == id) return
+        reset()
+        videoId = id
+        job = scope.launch {
+            try {
+                val token = withContext(Dispatchers.IO) { LiveChatFeed.replayStart(id) }
+                if (token == null || videoId != id) return@launch
+                nextCursor = token
+                wantedMs = 60_000L
+                available = true
+                drain()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (t: Throwable) {
+                // No replay for this video; stay unavailable without any error UI.
+            }
+        }
+    }
+
+    /** Fetches further pages until the buffer covers [upToMs] plus a minute of slack. */
+    fun ensureBuffered(upToMs: Long) {
+        if (!available) return
+        if (upToMs > wantedMs) wantedMs = upToMs
+        if (nextCursor == null || horizonMs >= wantedMs + 60_000L) return
+        if (job?.isActive == true) return
+        val id = videoId ?: return
+        job = scope.launch {
+            try {
+                if (videoId == id) drain()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (t: Throwable) {
+                // Keep whatever is buffered; the replay just stops advancing.
+            }
+        }
+    }
+
+    private suspend fun drain() {
+        while (true) {
+            val cursor = nextCursor ?: return
+            if (horizonMs >= wantedMs + 60_000L) return
+            loading = true
+            val page = try {
+                withContext(Dispatchers.IO) { LiveChatFeed.replayPage(cursor) }
+            } finally {
+                loading = false
+            }
+            if (page.messages.isNotEmpty()) {
+                val seen = messages.mapTo(HashSet()) { it.id }
+                messages = (messages + page.messages.filter { seen.add(it.id) })
+                    .sortedBy { it.offsetMs ?: 0L }
+            }
+            if (page.horizonMs > horizonMs) horizonMs = page.horizonMs
+            nextCursor = page.next
+            if (page.next == null || page.next == cursor) return
+        }
+    }
+
+    fun stop() {
+        job?.cancel()
+        job = null
+        loading = false
+    }
+
+    fun reset() {
+        stop()
+        videoId = null
+        nextCursor = null
+        horizonMs = 0L
+        wantedMs = 0L
+        available = false
+        messages = emptyList()
+    }
+}
+
 object LiveChatFeed {
 
     internal fun start(videoId: String): LiveChatStart? {
@@ -303,6 +408,71 @@ object LiveChatFeed {
             }
         }
         return LiveChatPage(out.distinctBy { it.id }, next, sendParams)
+    }
+
+    /**
+     * Returns the chat replay continuation for a past stream, or null when the
+     * video has no replay. Only a continuation entry whose key is explicitly
+     * liveChatReplayContinuationData counts; live entries are ignored so a
+     * running stream never looks like a replay.
+     */
+    internal fun replayStart(videoId: String): String? {
+        val root = InnerTube.postAny("next", JSONObject().put("videoId", videoId))
+        var token: String? = null
+        root.walk { key, obj ->
+            if (key != "liveChatRenderer" || token != null) return@walk
+            val continuations = obj.optJSONArray("continuations") ?: return@walk
+            for (i in 0 until continuations.length()) {
+                val entry = continuations.optJSONObject(i) ?: continue
+                entry.optJSONObject("liveChatReplayContinuationData")
+                    ?.optString("continuation")
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { token = it }
+                if (token != null) break
+            }
+        }
+        return token
+    }
+
+    /**
+     * Fetches one replay page. Each replayChatItemAction carries the video
+     * offset its messages appeared at; those offsets stamp the parsed
+     * messages so the panel can reveal them in sync with playback.
+     */
+    internal fun replayPage(cursor: String): ReplayPage {
+        val root = InnerTube.postAny("live_chat/get_live_chat_replay", JSONObject().put("continuation", cursor))
+        val out = ArrayList<LiveChatMessage>()
+        var next: String? = null
+        var untilMs: Long? = null
+        var maxOffset = 0L
+        root.walk { key, obj ->
+            when (key) {
+                "liveChatContinuation" -> {
+                    val continuations = obj.optJSONArray("continuations") ?: return@walk
+                    for (i in 0 until continuations.length()) {
+                        val entry = continuations.optJSONObject(i) ?: continue
+                        val data = entry.optJSONObject("liveChatReplayContinuationData") ?: continue
+                        data.optString("continuation").takeIf { it.isNotBlank() }?.let { next = it }
+                        data.optString("timeUntilLastMessageMsec").toLongOrNull()?.let { untilMs = it }
+                    }
+                }
+
+                "replayChatItemAction" -> {
+                    val offset = obj.optString("videoOffsetTimeMsec").toLongOrNull() ?: 0L
+                    if (offset > maxOffset) maxOffset = offset
+                    obj.walk { innerKey, inner ->
+                        if (innerKey == "liveChatTextMessageRenderer" ||
+                            innerKey == "liveChatPaidMessageRenderer" ||
+                            innerKey == "liveChatMembershipItemRenderer"
+                        ) {
+                            parseMessage(inner)?.let { out += it.copy(offsetMs = offset) }
+                        }
+                    }
+                }
+            }
+        }
+        if (out.isEmpty() && next == null) return ReplayPage(emptyList(), null, 0L)
+        return ReplayPage(out.distinctBy { it.id }, next, maxOf(untilMs ?: 0L, maxOffset))
     }
 
     /**
@@ -642,6 +812,90 @@ private fun LiveChatRow(message: LiveChatMessage) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(message.text, color = c.onSurface, fontSize = 13.5.sp, lineHeight = 18.sp)
+        }
+    }
+}
+
+/**
+ * Read-only replay of a past stream's chat. Messages appear as the playhead
+ * reaches the offset they were sent at, and the panel keeps the buffer
+ * filled ahead of the playhead while it is open.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChatReplayPanel(
+    state: ChatReplayState,
+    positionMs: Long,
+    onClose: () -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    val list = rememberLazyListState()
+    val visible = state.messages.filter { (it.offsetMs ?: 0L) <= positionMs }
+    val dragged by list.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(positionMs) { state.ensureBuffered(positionMs) }
+    LaunchedEffect(visible.size, dragged) {
+        if (visible.isNotEmpty() && !dragged) {
+            runCatching { list.animateScrollToItem(visible.lastIndex) }
+        }
+    }
+    ModalBottomSheet(
+        onDismissRequest = onClose,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
+        containerColor = c.surfaceContainerLow,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 320.dp, max = 560.dp)
+                .imePadding()
+                .padding(bottom = 10.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(I18n.t("chat_replay", "Chat replay"), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                Spacer(Modifier.weight(1f))
+                Box(
+                    Modifier.size(42.dp).pressable(onClick = onClose),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        "Close chat replay",
+                        tint = c.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                when {
+                    state.loading && visible.isEmpty() -> Box(
+                        Modifier.fillMaxWidth().padding(vertical = 34.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
+                    }
+
+                    visible.isEmpty() -> Text(
+                        "Waiting for messages…",
+                        color = c.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+                    )
+
+                    else -> LazyColumn(
+                        state = list,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        items(visible, key = { it.id }) { message ->
+                            LiveChatRow(message)
+                        }
+                    }
+                }
+            }
         }
     }
 }

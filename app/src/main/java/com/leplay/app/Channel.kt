@@ -82,6 +82,10 @@ class ChannelState(val url: String, private val scope: CoroutineScope) {
         private set
     var activeTab by mutableStateOf(ChannelTab.Videos)
         private set
+    var videoSort by mutableStateOf(ChannelVideoSort.Latest)
+        private set
+    var sortTokens by mutableStateOf<Map<ChannelVideoSort, String>>(emptyMap())
+        private set
     var liveVideos by mutableStateOf<List<VideoItem>>(emptyList())
         private set
     var liveLoading by mutableStateOf(false)
@@ -124,6 +128,8 @@ class ChannelState(val url: String, private val scope: CoroutineScope) {
                         .onSuccess { p ->
                             videos = p.videos
                             next = p.next
+                            videoSort = ChannelVideoSort.Latest
+                            if (p.sortTokens.isNotEmpty()) sortTokens = p.sortTokens
                             p.channelHeader?.let { d = d.withHeader(it) }
                             details = d
                         }
@@ -213,6 +219,35 @@ class ChannelState(val url: String, private val scope: CoroutineScope) {
         }
     }
 
+    fun selectSort(sort: ChannelVideoSort) {
+        if (sort == videoSort) return
+        val d = details ?: return
+        val token = sortTokens[sort]
+        // Popular / Oldest only exist as chip continuations; Latest can always
+        // fall back to the default first-page load.
+        if (token == null && sort != ChannelVideoSort.Latest) return
+        videoSort = sort
+        videos = emptyList()
+        next = null
+        error = null
+        loading = true
+        scope.launch {
+            val result = if (token != null) {
+                runCatching { YouTube.channelVideos(d, null, sortToken = token) }
+            } else {
+                runCatching { YouTube.channelVideos(d, null) }
+            }
+            result
+                .onSuccess { p ->
+                    videos = p.videos
+                    next = p.next
+                    if (p.sortTokens.isNotEmpty()) sortTokens = p.sortTokens
+                }
+                .onFailure { error = YouTube.friendlyError(it) }
+            loading = false
+        }
+    }
+
     fun toggleSubscribe(onError: (String) -> Unit) {
         val id = details?.id ?: return
         val before = subscribed ?: return
@@ -284,6 +319,69 @@ fun ChannelTabStrip(selected: ChannelTab, onSelect: (ChannelTab) -> Unit, modifi
 }
 
 @Composable
+fun ChannelSortChips(selected: ChannelVideoSort, onSelect: (ChannelVideoSort) -> Unit, modifier: Modifier = Modifier) {
+    val isDark = isDarkTheme()
+    val isAmoled = ThemeSettings.mode == "amoled"
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ChannelVideoSort.entries.forEach { sort ->
+            val isSelected = sort == selected
+            val background by animateColorAsState(
+                targetValue = when {
+                    isSelected -> if (isDark || isAmoled) Color.White else Color.Black
+                    isAmoled -> Color(0xFF161616)
+                    isDark -> Color(0xFF272727)
+                    else -> Color(0xFFE5E5E5)
+                },
+                animationSpec = tween(220, easing = Motion.Emphasized),
+                label = "channelSortBackground",
+            )
+            val foreground by animateColorAsState(
+                targetValue = when {
+                    isSelected -> if (isDark || isAmoled) Color.Black else Color.White
+                    isDark || isAmoled -> Color.White
+                    else -> Color(0xFF0F0F0F)
+                },
+                animationSpec = tween(180, easing = Motion.Emphasized),
+                label = "channelSortForeground",
+            )
+            val scale by animateFloatAsState(
+                targetValue = if (isSelected) 1f else 0.94f,
+                animationSpec = spring(dampingRatio = 0.7f, stiffness = 700f),
+                label = "channelSortScale",
+            )
+            Box(
+                modifier = Modifier
+                    .graphicsLayer { scaleX = scale; scaleY = scale }
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(background)
+                    .pressable(pressedScale = 0.94f) { onSelect(sort) }
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    when (sort) {
+                        ChannelVideoSort.Latest -> I18n.t("sort_latest", "Latest")
+                        ChannelVideoSort.Popular -> I18n.t("sort_popular", "Popular")
+                        ChannelVideoSort.Oldest -> I18n.t("sort_oldest", "Oldest")
+                    },
+                    color = foreground,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun ChannelScreen(
     state: ChannelState,
     contentPadding: PaddingValues,
@@ -305,6 +403,7 @@ fun ChannelScreen(
             else -> {}
         }
     }
+    LaunchedEffect(state.videoSort) { list.scrollToItem(0) }
     Box(Modifier.fillMaxSize().background(c.surface)) {
     CollapsingHeaderLayout(
         header = {
@@ -368,6 +467,11 @@ fun ChannelScreen(
                 }
                 item(key = "tabs") {
                     ChannelTabStrip(selected = state.activeTab, onSelect = { state.selectTab(it) })
+                }
+                if (state.activeTab == ChannelTab.Videos && state.sortTokens.size >= 2) {
+                    item(key = "videoSort") {
+                        ChannelSortChips(selected = state.videoSort, onSelect = { state.selectSort(it) })
+                    }
                 }
                 when (state.activeTab) {
                     ChannelTab.Videos -> {

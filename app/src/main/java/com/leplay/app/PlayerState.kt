@@ -191,6 +191,9 @@ class PlayerState(private val scope: CoroutineScope) {
     /** Polled only while a live stream's chat sheet is open. */
     val liveChat = LiveChatState(scope)
 
+    /** Chat replay for past streams; probed silently on open, buffered on demand. */
+    val chatReplay = ChatReplayState(scope)
+
 
 
     var accountState by mutableStateOf<VideoAccountState?>(null)
@@ -295,6 +298,8 @@ class PlayerState(private val scope: CoroutineScope) {
         sheet = null
         comments.clearFor(item.id)
         liveChat.stop()
+        chatReplay.reset()
+        if (!item.isLive && item.localUri == null) chatReplay.prepare(item.id)
         accountState = null
         inWatchLater = false
         audioOptions = emptyList()
@@ -931,6 +936,7 @@ class PlayerState(private val scope: CoroutineScope) {
     fun close() {
         loadJob?.cancel()
         controller?.run { stop(); clearMediaItems() }
+        chatReplay.reset()
         queue = emptyList()
         expanded = false
         fullscreen = false

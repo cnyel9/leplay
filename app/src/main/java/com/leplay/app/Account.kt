@@ -16,6 +16,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.net.URLDecoder
 import java.security.MessageDigest
 import kotlin.random.Random
 
@@ -76,8 +77,15 @@ data class ChannelRef(val id: String, val name: String, val avatar: String?) {
 }
 
 
+enum class ChannelVideoSort { Latest, Popular, Oldest }
+
 @Immutable
-data class FeedPage(val videos: List<VideoItem>, val next: String?, val channelHeader: ChannelHeaderMeta? = null)
+data class FeedPage(
+    val videos: List<VideoItem>,
+    val next: String?,
+    val channelHeader: ChannelHeaderMeta? = null,
+    val sortTokens: Map<ChannelVideoSort, String> = emptyMap(),
+)
 
 
 @Immutable
@@ -1744,13 +1752,44 @@ object InnerTube {
         return@coroutineScope FeedPage(fallbackVideos, "anon_feed:$nextIdx:start")
     }
 
-    suspend fun channelVideos(channelId: String, continuation: String? = null): FeedPage = withContext(Dispatchers.IO) {
-        val body = if (continuation != null) JSONObject().put("continuation", continuation)
-        else JSONObject().put("browseId", channelId).put("params", CHANNEL_VIDEOS_TAB)
+    suspend fun channelVideos(channelId: String, continuation: String? = null, sortToken: String? = null): FeedPage = withContext(Dispatchers.IO) {
+        val body = when {
+            continuation != null -> JSONObject().put("continuation", continuation)
+            sortToken != null -> JSONObject().put("continuation", sortToken)
+            else -> JSONObject().put("browseId", channelId).put("params", CHANNEL_VIDEOS_TAB)
+        }
         val root = postAny("browse", body)
         val page = parseFeed(root)
-        val header = if (continuation == null) parseChannelHeader(root) else null
-        FeedPage(page.videos, page.next, header)
+        val header = if (continuation == null && sortToken == null) parseChannelHeader(root) else null
+        val sorts = if (continuation == null) parseChannelSortTokens(root) else emptyMap()
+        FeedPage(page.videos, page.next, header, sorts)
+    }
+
+    /**
+     * The Videos tab's chip bar carries one continuation token per sort order
+     * (Latest / Popular / Oldest). Tokens are per-session and URL-encoded in the
+     * response, so they are decoded here and never hardcoded.
+     */
+    internal fun parseChannelSortTokens(root: JSONObject): Map<ChannelVideoSort, String> {
+        val out = LinkedHashMap<ChannelVideoSort, String>()
+        root.walk { key, obj ->
+            if (key != "chipViewModel") return@walk
+            val label = obj.optString("text")
+            val sort = when {
+                label.contains("latest", ignoreCase = true) || label.contains("newest", ignoreCase = true) -> ChannelVideoSort.Latest
+                label.contains("popular", ignoreCase = true) -> ChannelVideoSort.Popular
+                label.contains("oldest", ignoreCase = true) -> ChannelVideoSort.Oldest
+                else -> return@walk
+            }
+            if (sort in out) return@walk
+            val token = obj.optJSONObject("tapCommand")
+                ?.optJSONObject("innertubeCommand")
+                ?.optJSONObject("continuationCommand")
+                ?.optString("token")
+                ?.takeIf { it.isNotBlank() } ?: return@walk
+            out[sort] = runCatching { URLDecoder.decode(token, "UTF-8") }.getOrDefault(token)
+        }
+        return out
     }
 
     suspend fun channelLive(channelId: String, continuation: String? = null): FeedPage = withContext(Dispatchers.IO) {

@@ -268,7 +268,7 @@ class CommentsState(private val scope: CoroutineScope) {
 
 
 @Composable
-fun CommentsCard(state: CommentsState, onOpen: () -> Unit, live: Boolean = false) {
+fun CommentsCard(state: CommentsState, onOpen: () -> Unit, live: Boolean = false, replay: Boolean = false) {
     val c = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(12.dp)
     val first = state.comments.firstOrNull()
@@ -277,7 +277,7 @@ fun CommentsCard(state: CommentsState, onOpen: () -> Unit, live: Boolean = false
             .padding(top = 10.dp)
             .fillMaxWidth()
             .pressable(
-                enabled = live || state.comments.isNotEmpty() || (Account.signedIn && !state.disabled && !state.loading),
+                enabled = live || replay || state.comments.isNotEmpty() || (Account.signedIn && !state.disabled && !state.loading),
                 pressedScale = 0.98f,
                 onClick = onOpen,
             )
@@ -290,8 +290,16 @@ fun CommentsCard(state: CommentsState, onOpen: () -> Unit, live: Boolean = false
                 Box(Modifier.size(7.dp).clip(CircleShape).background(c.error))
                 Spacer(Modifier.width(6.dp))
             }
-            Text(if (live) "Live chat" else "Comments", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            if (!live && state.total > 0) {
+            Text(
+                when {
+                    live -> "Live chat"
+                    replay -> I18n.t("chat_replay", "Chat replay")
+                    else -> "Comments"
+                },
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+            )
+            if (!live && !replay && state.total > 0) {
                 Spacer(Modifier.width(6.dp))
                 Text(formatCount(state.total.toLong()), color = c.onSurfaceVariant, fontWeight = FontWeight.Medium, fontSize = 12.sp)
             }
@@ -300,6 +308,12 @@ fun CommentsCard(state: CommentsState, onOpen: () -> Unit, live: Boolean = false
         if (live) {
             Text(
                 "Chat is live — tap to join the conversation.",
+                color = c.onSurfaceVariant,
+                fontSize = 12.sp,
+            )
+        } else if (replay) {
+            Text(
+                I18n.t("chat_replay_hint", "See the chat as it happened live."),
                 color = c.onSurfaceVariant,
                 fontSize = 12.sp,
             )

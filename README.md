@@ -38,9 +38,9 @@
 
 ## Download
 
-[**Download Latest APK (v0.0.2)**](https://github.com/cnyel9/leplay/releases/latest)
+[**Download Latest APK (v0.0.3)**](https://github.com/cnyel9/leplay/releases/latest)
 
-> **Version 0.0.2** · Android 7.0+ · One universal APK for phones, tablets, and Android TV.
+> **Version 0.0.3** · Android 7.0+ · One universal APK for phones, tablets, and Android TV.
 
 ---
 
