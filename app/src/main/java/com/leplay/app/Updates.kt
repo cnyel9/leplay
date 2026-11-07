@@ -86,6 +86,7 @@ data class UpdateInfo(
  * newer than the latest published release). Keep this in sync with the build.
  */
 internal val RELEASE_NOTES = """
+    • LePlay 0.0.6 test-1: channel Live tab gets Latest / Popular / Oldest sort chips with full paging, and video rows now show the view count together with the upload time in every language.
     • LePlay 0.0.5: Indonesian is now the default language with the full interface translated, video descriptions can be selected and copied, and viewer counts use Indonesian formatting (rb, jt, M).
     • Ad-free YouTube and YouTube Music playback with a Liquid Glass UI.
     • Personalised Shorts feed, synced lyrics, and high-quality downloads up to 4K HDR.

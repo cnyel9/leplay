@@ -97,6 +97,8 @@ class ChannelState(val url: String, private val scope: CoroutineScope) {
         private set
     var liveLoading by mutableStateOf(false)
         private set
+    var liveSort by mutableStateOf(ChannelVideoSort.Latest)
+        private set
     var shorts by mutableStateOf<List<VideoItem>>(emptyList())
         private set
     var shortsLoading by mutableStateOf(false)
@@ -108,7 +110,10 @@ class ChannelState(val url: String, private val scope: CoroutineScope) {
 
     private var next: String? = null
     private var shortsNext: String? = null
+    private var liveNext: String? = null
+    private var liveDraining = false
     val hasMore get() = next != null
+    val hasMoreLive get() = liveNext != null
 
     init { load() }
 
@@ -125,6 +130,7 @@ class ChannelState(val url: String, private val scope: CoroutineScope) {
     fun load() {
         loading = true
         error = null
+        liveNext = null
         scope.launch {
             runCatching { YouTube.channel(url) }
                 .onSuccess { base ->
@@ -136,6 +142,7 @@ class ChannelState(val url: String, private val scope: CoroutineScope) {
                             videos = p.videos
                             next = p.next
                             videoSort = ChannelVideoSort.Latest
+                            liveSort = ChannelVideoSort.Latest
                             if (p.sortTokens.isNotEmpty()) sortTokens = p.sortTokens
                             p.channelHeader?.let { d = d.withHeader(it) }
                             details = d
@@ -152,14 +159,18 @@ class ChannelState(val url: String, private val scope: CoroutineScope) {
 
     fun loadLive() {
         val d = details ?: return
+        if (liveLoading) return
         liveLoading = true
         scope.launch {
             runCatching { YouTube.channelLive(d, null) }
                 .onSuccess { p ->
-                    liveVideos = p.videos.ifEmpty { videos.filter { it.isLive } }
+                    val fromServer = p.videos
+                    liveVideos = fromServer.ifEmpty { videos.filter { it.isLive } }
+                    liveNext = if (fromServer.isEmpty()) null else p.next
                 }
                 .onFailure {
                     liveVideos = videos.filter { it.isLive }
+                    liveNext = null
                 }
             liveLoading = false
         }
@@ -194,6 +205,69 @@ class ChannelState(val url: String, private val scope: CoroutineScope) {
             shortsLoading = false
         }
     }
+
+    fun loadMoreLive() {
+        val d = details ?: return
+        val page = liveNext ?: return
+        if (liveLoading) return
+        liveLoading = true
+        scope.launch {
+            runCatching { YouTube.channelLive(d, page) }
+                .onSuccess { p ->
+                    val seen = liveVideos.mapTo(HashSet()) { it.id }
+                    liveVideos = liveVideos + p.videos.filter { seen.add(it.id) }
+                    liveNext = p.next
+                }
+            liveLoading = false
+        }
+    }
+
+    fun selectLiveSort(sort: ChannelVideoSort) {
+        if (sort == liveSort) return
+        liveSort = sort
+        if (sort != ChannelVideoSort.Latest) drainLive()
+    }
+
+    // YouTube serves no sort chips for the Live tab, so Popular / Oldest are
+    // computed client-side over the full stream list: drain every remaining
+    // page first (bounded), then liveDisplay reorders. liveLoading stays true
+    // for the whole drain so loadMoreLive cannot double-fetch meanwhile.
+    private fun drainLive() {
+        val d = details ?: return
+        if (liveDraining) return
+        liveDraining = true
+        scope.launch {
+            liveLoading = true
+            try {
+                var iterations = 0
+                while (liveSort != ChannelVideoSort.Latest && liveNext != null && iterations < 40) {
+                    iterations++
+                    val p = runCatching { YouTube.channelLive(d, liveNext!!) }.getOrNull() ?: break
+                    val seen = liveVideos.mapTo(HashSet()) { it.id }
+                    liveVideos = liveVideos + p.videos.filter { seen.add(it.id) }
+                    liveNext = p.next
+                }
+            } finally {
+                liveLoading = false
+                liveDraining = false
+            }
+        }
+    }
+
+    // Display order for the Live tab: currently-live streams stay pinned on
+    // top in every order; the rest follow the selected sort.
+    val liveDisplay: List<VideoItem>
+        get() {
+            val pinned = liveVideos.filter { it.isLive }
+            val rest = liveVideos.filter { !it.isLive }
+            return when (liveSort) {
+                ChannelVideoSort.Latest -> liveVideos
+                ChannelVideoSort.Popular -> pinned + rest.sortedWith(
+                    compareByDescending<VideoItem> { it.views >= 0 }.thenByDescending { it.views },
+                )
+                ChannelVideoSort.Oldest -> pinned + rest.sortedByDescending { ageSeconds(it.uploaded) ?: -1L }
+            }
+        }
 
     fun loadCommunity() {
         val d = details ?: return
@@ -261,7 +335,7 @@ class ChannelState(val url: String, private val scope: CoroutineScope) {
         subscribed = !before
         scope.launch {
             runCatching { InnerTube.setSubscribed(id, !before) }
-                .onFailure { subscribed = before; onError("Couldn't update your subscription.") }
+                .onFailure { subscribed = before; onError(I18n.t("subscription_update_failed", "Couldn't update your subscription.")) }
         }
     }
 }
@@ -402,15 +476,16 @@ fun ChannelScreen(
     val nearEnd by remember {
         derivedStateOf { (list.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= list.layoutInfo.totalItemsCount - 4 }
     }
-    LaunchedEffect(nearEnd, state.activeTab, state.videos.size, state.shorts.size) {
+    LaunchedEffect(nearEnd, state.activeTab, state.videos.size, state.shorts.size, state.liveVideos.size) {
         if (!nearEnd) return@LaunchedEffect
         when (state.activeTab) {
             ChannelTab.Videos -> if (state.videos.isNotEmpty()) state.loadMore()
             ChannelTab.Shorts -> if (state.shorts.isNotEmpty()) state.loadMoreShorts()
+            ChannelTab.Live -> if (state.liveVideos.isNotEmpty()) state.loadMoreLive()
             else -> {}
         }
     }
-    LaunchedEffect(state.videoSort) { list.scrollToItem(0) }
+    LaunchedEffect(state.videoSort, state.liveSort) { list.scrollToItem(0) }
     Box(Modifier.fillMaxSize().background(c.surface)) {
     CollapsingHeaderLayout(
         header = {
@@ -480,6 +555,11 @@ fun ChannelScreen(
                         ChannelSortChips(selected = state.videoSort, onSelect = { state.selectSort(it) })
                     }
                 }
+                if (state.activeTab == ChannelTab.Live && state.liveVideos.isNotEmpty()) {
+                    item(key = "liveSort") {
+                        ChannelSortChips(selected = state.liveSort, onSelect = { state.selectLiveSort(it) })
+                    }
+                }
                 when (state.activeTab) {
                     ChannelTab.Videos -> {
                         items(state.videos, key = { it.id }) { video ->
@@ -518,7 +598,7 @@ fun ChannelScreen(
                         }
                     }
                     ChannelTab.Live -> {
-                        if (state.liveLoading) {
+                        if (state.liveLoading && state.liveVideos.isEmpty()) {
                             item {
                                 Box(Modifier.fillMaxWidth().padding(48.dp), Alignment.Center) {
                                     CircularProgressIndicator(color = c.primary, strokeWidth = 4.dp, modifier = Modifier.size(32.dp))
@@ -533,8 +613,13 @@ fun ChannelScreen(
                                 )
                             }
                         } else {
-                            items(state.liveVideos, key = { it.id }) { video ->
+                            items(state.liveDisplay, key = { it.id }) { video ->
                                 VideoCard(video, onClick = { onOpen(video) }, modifier = Modifier.animateItem())
+                            }
+                            if (state.liveLoading || state.hasMoreLive) item {
+                                Box(Modifier.fillMaxWidth().padding(28.dp), Alignment.Center) {
+                                    CircularProgressIndicator(color = c.primary, strokeWidth = 4.dp, modifier = Modifier.size(32.dp))
+                                }
                             }
                         }
                     }
@@ -654,4 +739,31 @@ private fun ShortTile(video: VideoItem, modifier: Modifier, onOpen: (VideoItem) 
             }
         }
     }
+}
+
+private val AGE_PATTERN = Regex(
+    """(\d+)\s*(detik|menit|jam|hari|minggu|bulan|tahun|seconds?|minutes?|hours?|days?|weeks?|months?|years?)""",
+    RegexOption.IGNORE_CASE,
+)
+
+// Parses a relative upload label ("7 hari yang lalu", "Streamed 5 days ago")
+// into an age in seconds. The match is searched, not anchored, so prefixes
+// like "Streamed" / "Disiarkan" are fine. Null when the label carries no
+// number+unit (including null input and the live-now label).
+private fun ageSeconds(uploaded: String?): Long? {
+    val text = uploaded ?: return null
+    val match = AGE_PATTERN.find(text) ?: return null
+    val n = match.groupValues[1].toLongOrNull() ?: return null
+    val unit = match.groupValues[2].lowercase()
+    val mult = when {
+        unit.startsWith("detik") || unit.startsWith("second") -> 1L
+        unit.startsWith("menit") || unit.startsWith("minute") -> 60L
+        unit.startsWith("jam") || unit.startsWith("hour") -> 3_600L
+        unit.startsWith("hari") || unit.startsWith("day") -> 86_400L
+        unit.startsWith("minggu") || unit.startsWith("week") -> 604_800L
+        unit.startsWith("bulan") || unit.startsWith("month") -> 2_592_000L
+        unit.startsWith("tahun") || unit.startsWith("year") -> 31_536_000L
+        else -> return null
+    }
+    return n * mult
 }

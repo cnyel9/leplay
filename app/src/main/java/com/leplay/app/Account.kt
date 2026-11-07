@@ -2111,16 +2111,57 @@ object InnerTube {
             parts.any { it.contains("watching", ignoreCase = true) }
         val avatar = meta.bestChannelAvatarUrl()
         val duration = o.optJSONObject("contentImage")?.collectStrings("text")?.firstOrNull { DURATION.matches(it) }
+        // Structural classification of the metadata parts. The row is a flat
+        // list: [views, time] on channel pages, [channel, views, time] on
+        // home/search. Keyword picks break in other locales (Indonesian
+        // "79 jt x ditonton" / "7 hari yang lalu" contain neither "view" nor
+        // "ago"), so classify by shape: a views-like part starts with a digit,
+        // parses as a view count, and carries a count marker or a magnitude
+        // suffix token (rb/jt/k/m/b as a whole token, so "bulan" or
+        // "7 days ago" never qualify as views).
+        fun isViewsLike(part: String): Boolean {
+            val trimmed = part.trim()
+            if (trimmed.firstOrNull()?.isDigit() != true) return false
+            if (parseViews(part) < 0) return false
+            val lower = trimmed.lowercase()
+            if ("view" in lower || "watching" in lower || "ditonton" in lower || "menonton" in lower) return true
+            val numToken = Regex("^\\d[\\d.,]*").find(trimmed)?.value ?: return false
+            val suffix = trimmed.substring(numToken.length).trimStart().takeWhile { it.isLetter() }.lowercase()
+            return suffix == "rb" || suffix == "jt" || suffix == "k" || suffix == "m" || suffix == "b"
+        }
+        val viewsIdx = parts.indexOfFirst { isViewsLike(it) }
+        val parsedChannel: String
+        val parsedViews: Long
+        val parsedUploaded: String?
+        if (viewsIdx >= 0) {
+            parsedViews = parseViews(parts[viewsIdx])
+            val others = parts.indices.filter { it != viewsIdx }
+            if (parts.size >= 3 && others.size >= 2) {
+                parsedChannel = parts[others.first()]
+                parsedUploaded = parts[others.last()]
+            } else {
+                parsedChannel = ""
+                parsedUploaded = others.firstOrNull()?.let { parts[it] }
+            }
+        } else {
+            // No views-like part: keep the old keyword picks for channel and
+            // views, but uploaded is still the last remaining part.
+            val channelIdx = parts.indexOfFirst { !it.contains("view") && !it.contains("ago") && !it.contains("watching") }
+            parsedChannel = if (channelIdx >= 0) parts[channelIdx] else ""
+            val oldViewsIdx = parts.indexOfFirst { it.contains("view") || it.contains("watching") }
+            parsedViews = parseViews(oldViewsIdx.takeIf { it >= 0 }?.let { parts[it] })
+            parsedUploaded = parts.indices.lastOrNull { it != channelIdx && it != oldViewsIdx }?.let { parts[it] }
+        }
         return VideoItem(
             id = id,
             title = title,
-            channel = parts.firstOrNull { !it.contains("view") && !it.contains("ago") && !it.contains("watching") }.orEmpty(),
+            channel = parsedChannel,
             channelUrl = o.collectStrings("browseId").firstOrNull { it.startsWith("UC") }?.let { "https://www.youtube.com/channel/$it" },
             thumbnail = videoThumbnailUrl(o, id),
             avatar = avatar?.let { sharpenChannelAvatarUrl(absoluteUrl(it), 96) },
             durationSec = if (isLive) 0L else parseDuration(duration),
-            views = parseViews(parts.firstOrNull { it.contains("view") || it.contains("watching") }),
-            uploaded = if (isLive) I18n.t("live_now", "Live") else (parts.firstOrNull { it.contains("ago") || it.contains("पहले") || it.contains("hace") || it.contains("назад") } ?: parts.getOrNull(2))?.let { I18n.translateTimeAgo(it) },
+            views = parsedViews,
+            uploaded = if (isLive) I18n.t("live_now", "Live") else parsedUploaded?.let { I18n.translateTimeAgo(it) },
             isLive = isLive,
         )
     }
@@ -2216,8 +2257,32 @@ object InnerTube {
     }
 
 
+    /**
+     * Indonesian view counts: "." groups thousands and "," is the decimal
+     * point ("1.234 x ditonton" = 1234, "2,1 jt" = 2.1M). Suffixes are
+     * matched as whole tokens: rb = ribu (1e3), jt = juta (1e6) and a
+     * standalone M token = miliar (1e9). Returns null when the text is not
+     * Indonesian so the caller falls through to the default parsing.
+     */
+    private fun parseIndonesianViews(t: String): Long? {
+        val numMatch = Regex("([\\d][\\d.,]*)").find(t) ?: return null
+        val suffix = t.substring(numMatch.range.last + 1).trimStart().takeWhile { it.isLetter() }
+        val indonesian = suffix == "rb" || suffix == "jt" || "ditonton" in t || "menonton" in t
+        if (!indonesian) return null
+        val num = numMatch.groupValues[1].replace(".", "").replace(",", ".").toDoubleOrNull() ?: return null
+        val mult = when (suffix) {
+            "rb" -> 1e3
+            "jt" -> 1e6
+            "m" -> 1e9
+            else -> 1.0
+        }
+        return (num * mult).toLong()
+    }
+
     internal fun parseViews(text: String?): Long {
-        val t = text?.lowercase()?.replace(",", "")?.trim() ?: return -1
+        val raw = text?.lowercase()?.trim() ?: return -1
+        parseIndonesianViews(raw)?.let { return it }
+        val t = raw.replace(",", "")
         if (t.startsWith("no ") || t.startsWith("कोई ") || t.startsWith("sin ")) return 0
         if ("करोड़" in t || "cr" in t) {
             val num = Regex("([\\d.]+)").find(t)?.groupValues?.get(1)?.toDoubleOrNull() ?: return -1

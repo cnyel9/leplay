@@ -440,7 +440,11 @@ fun VideoRow(video: VideoItem, onClick: () -> Unit, trailing: (@Composable () ->
                 video.views.takeIf { it >= 0 }?.let { "${formatCount(it)} ${I18n.t("views", "views")}" }
             }
             Text(
-                listOfNotNull(video.channel.ifBlank { null }, viewsLabel).joinToString(" · "),
+                listOfNotNull(
+                    video.channel.ifBlank { null },
+                    viewsLabel,
+                    if (video.isLive) null else video.uploaded?.ifBlank { null }?.let { I18n.translateTimeAgo(it) },
+                ).joinToString(" · "),
                 color = c.onSurfaceVariant,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
