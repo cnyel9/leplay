@@ -137,7 +137,7 @@ class LiveChatState(private val scope: CoroutineScope) {
             try {
                 val start: LiveChatStart = withContext(Dispatchers.IO) { LiveChatFeed.start(id) }
                     ?: run {
-                        error = "Live chat isn't available for this stream."
+                        error = I18n.t("live_chat_unavailable", "Live chat isn't available for this stream.")
                         loading = false
                         return@launch
                     }
@@ -178,7 +178,7 @@ class LiveChatState(private val scope: CoroutineScope) {
         val text = draft.trim()
         if (text.isEmpty() || sending) return
         if (!Account.signedIn) {
-            sendError = "Sign in to chat."
+            sendError = I18n.t("sign_in_to_chat", "Sign in to chat.")
             return
         }
         sending = true
@@ -192,7 +192,7 @@ class LiveChatState(private val scope: CoroutineScope) {
                     val profile = Account.profile
                     val local = LiveChatMessage(
                         id = "local-${UUID.randomUUID()}",
-                        author = profile?.name ?: "You",
+                        author = profile?.name ?: I18n.t("you", "You"),
                         text = text,
                         avatar = profile?.avatar,
                     )
@@ -499,7 +499,7 @@ object LiveChatFeed {
         text: String,
     ): List<LiveChatMessage> {
         val params = pageParams ?: channelId?.let { liveMessageParams(it, videoId) }
-            ?: throw IOException("Chat isn't ready yet. Try again in a moment.")
+            ?: throw IOException(I18n.t("chat_not_ready", "Chat isn't ready yet. Try again in a moment."))
         val body = JSONObject()
             .put("params", params)
             .put("clientMessageId", UUID.randomUUID().toString())
@@ -513,7 +513,7 @@ object LiveChatFeed {
         val root = InnerTube.post("live_chat/send_message", body)
         if (root.has("error")) {
             val err = root.optJSONObject("error")
-            val msg = err?.optString("message") ?: "YouTube could not send your message"
+            val msg = err?.optString("message") ?: I18n.t("chat_send_failed", "YouTube could not send your message")
             throw IOException(msg)
         }
         var errorMsg: String? = null
@@ -650,7 +650,7 @@ fun LiveChatPanel(
                         .background(if (state.live) c.error else c.onSurfaceVariant),
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("Live chat", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+                Text(I18n.t("live_chat", "Live chat"), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
                 Spacer(Modifier.weight(1f))
                 Box(
                     Modifier.size(42.dp).pressable(onClick = onClose),
@@ -658,7 +658,7 @@ fun LiveChatPanel(
                 ) {
                     Icon(
                         Icons.Rounded.Close,
-                        "Close live chat",
+                        I18n.t("close_live_chat", "Close live chat"),
                         tint = c.onSurfaceVariant,
                         modifier = Modifier.size(20.dp),
                     )
@@ -681,7 +681,7 @@ fun LiveChatPanel(
                     }
 
                     state.messages.isEmpty() -> Text(
-                        "Waiting for messages…",
+                        I18n.t("waiting_for_messages", "Waiting for messages…"),
                         color = c.onSurfaceVariant,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
@@ -721,7 +721,7 @@ fun LiveChatPanel(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "Sign in to chat",
+                        I18n.t("sign_in_to_chat", "Sign in to chat"),
                         color = c.primary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -767,7 +767,7 @@ private fun LiveChatComposer(state: LiveChatState) {
     ) {
         Box(Modifier.weight(1f)) {
             if (state.draft.isEmpty()) {
-                Text("Chat…", color = c.onSurfaceVariant, fontSize = 14.sp)
+                Text(I18n.t("chat_placeholder", "Chat…"), color = c.onSurfaceVariant, fontSize = 14.sp)
             }
             BasicTextField(
                 value = state.draft,
@@ -801,7 +801,7 @@ private fun LiveChatComposer(state: LiveChatState) {
             } else {
                 Icon(
                     Icons.AutoMirrored.Rounded.Send,
-                    "Send message",
+                    I18n.t("send_message", "Send message"),
                     tint = if (canSend) c.onPrimary else c.onSurfaceVariant,
                     modifier = Modifier.size(18.dp),
                 )
@@ -876,7 +876,7 @@ fun ChatReplayPanel(
                 ) {
                     Icon(
                         Icons.Rounded.Close,
-                        "Close chat replay",
+                        I18n.t("close_chat_replay", "Close chat replay"),
                         tint = c.onSurfaceVariant,
                         modifier = Modifier.size(20.dp),
                     )
@@ -892,7 +892,7 @@ fun ChatReplayPanel(
                     }
 
                     visible.isEmpty() -> Text(
-                        "Waiting for messages…",
+                        I18n.t("waiting_for_messages", "Waiting for messages…"),
                         color = c.onSurfaceVariant,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),

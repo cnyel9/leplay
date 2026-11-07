@@ -350,7 +350,7 @@ fun VideoContent(
                                         val newB = (currentB + (dy / size.height) * 0.85f).coerceIn(0.02f, 1f)
                                         attrs.screenBrightness = newB
                                         window.attributes = attrs
-                                        gestureHud = Pair(Icons.Rounded.BrightnessMedium, Pair("Brightness", newB))
+                                        gestureHud = Pair(Icons.Rounded.BrightnessMedium, Pair(I18n.t("brightness", "Brightness"), newB))
                                     } else if (isRightEdge && audioManager != null) {
                                         val maxV = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                                         val curV = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
@@ -360,7 +360,7 @@ fun VideoContent(
                                             val newV = (curV + deltaV).coerceIn(0, maxV)
                                             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newV, 0)
                                             val icon = if (newV == 0) Icons.AutoMirrored.Rounded.VolumeMute else Icons.AutoMirrored.Rounded.VolumeUp
-                                            gestureHud = Pair(icon, Pair("Volume", newV.toFloat() / maxV.toFloat()))
+                                            gestureHud = Pair(icon, Pair(I18n.t("volume", "Volume"), newV.toFloat() / maxV.toFloat()))
                                         }
                                     }
                                     lastY = change.position.y
@@ -498,7 +498,7 @@ fun VideoContent(
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Text(
-                    text = "${(state.videoZoom * 10).toInt() / 10f}× · Tap to reset",
+                    text = I18n.t("zoom_tap_reset", "{zoom}× · Tap to reset").replace("{zoom}", "${(state.videoZoom * 10).toInt() / 10f}"),
                     color = Color.White,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -565,7 +565,7 @@ fun VideoContent(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (fullscreen) {
-                        GlassButton(Icons.AutoMirrored.Rounded.ArrowBack, "Exit fullscreen", enabled, size = 32.dp, iconSize = 20.dp, backdrop = videoBackdrop) {
+                        GlassButton(Icons.AutoMirrored.Rounded.ArrowBack, I18n.t("exit_fullscreen", "Exit fullscreen"), enabled, size = 32.dp, iconSize = 20.dp, backdrop = videoBackdrop) {
                             touched()
                             onToggleFullscreen()
                         }
@@ -580,7 +580,7 @@ fun VideoContent(
                             modifier = Modifier.weight(1f),
                         )
                     } else {
-                        GlassButton(Icons.Rounded.KeyboardArrowDown, "Minimize", enabled, size = 32.dp, iconSize = 22.dp, backdrop = videoBackdrop) {
+                        GlassButton(Icons.Rounded.KeyboardArrowDown, I18n.t("minimize", "Minimize"), enabled, size = 32.dp, iconSize = 22.dp, backdrop = videoBackdrop) {
                             touched()
                             onCollapse()
                         }
@@ -590,7 +590,7 @@ fun VideoContent(
 
                     GlassButton(
                         if (state.zoomToFill) Icons.Rounded.AspectRatio else Icons.Rounded.CropFree,
-                        if (state.zoomToFill) "Fit to screen" else "Fill screen",
+                        if (state.zoomToFill) I18n.t("fit_to_screen", "Fit to screen") else I18n.t("zoom_to_fill", "Fill screen"),
                         enabled,
                         size = 32.dp,
                         iconSize = 18.dp,
@@ -604,15 +604,15 @@ fun VideoContent(
 
 
                     if (pip?.supported == true) {
-                        GlassButton(Icons.Rounded.PictureInPictureAlt, "Picture-in-picture", enabled, size = 32.dp, iconSize = 18.dp, backdrop = videoBackdrop) {
+                        GlassButton(Icons.Rounded.PictureInPictureAlt, I18n.t("picture_in_picture", "Picture-in-picture"), enabled, size = 32.dp, iconSize = 18.dp, backdrop = videoBackdrop) {
                             controlsVisible = false
-                            if (!pip.enter(state.videoAspect)) state.actionMessage = "Picture-in-picture is turned off for LePlay in Settings."
+                            if (!pip.enter(state.videoAspect)) state.actionMessage = I18n.t("pip_disabled_message", "Picture-in-picture is turned off for LePlay in Settings.")
                         }
                         Spacer(Modifier.width(6.dp))
                     }
 
 
-                    GlassButton(Icons.Rounded.Settings, "Playback settings", enabled, size = 32.dp, iconSize = 20.dp, backdrop = videoBackdrop) {
+                    GlassButton(Icons.Rounded.Settings, I18n.t("playback_settings", "Playback settings"), enabled, size = 32.dp, iconSize = 20.dp, backdrop = videoBackdrop) {
                         touched()
                         state.sheet = PlayerSheet.Settings
                     }
@@ -623,7 +623,7 @@ fun VideoContent(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val skip = if (fullscreen) 50.dp else 43.dp
-                    GlassButton(Icons.Rounded.Replay10, "Back 10 seconds", enabled, size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
+                    GlassButton(Icons.Rounded.Replay10, I18n.t("back_10_seconds", "Back 10 seconds"), enabled, size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
                         touched(); state.seekBy(-10_000)
                     }
                     val playGlass = Modifier.liquidGlass(
@@ -647,7 +647,7 @@ fun VideoContent(
                         backdrop = playGlass,
                         glass = true,
                     ) { touched(); state.togglePlay() }
-                    GlassButton(Icons.Rounded.Forward10, "Forward 10 seconds", enabled, size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
+                    GlassButton(Icons.Rounded.Forward10, I18n.t("forward_10_seconds", "Forward 10 seconds"), enabled, size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
                         touched(); state.seekBy(10_000)
                     }
                 }
@@ -679,7 +679,7 @@ fun VideoContent(
                         if (PlayerControlSettings.showQuickControls) {
                             GlassButton(
                                 Icons.Rounded.Speed,
-                                "Playback speed",
+                                I18n.t("playback_speed", "Playback speed"),
                                 enabled,
                                 size = 34.dp,
                                 iconSize = 20.dp,
@@ -689,7 +689,7 @@ fun VideoContent(
                             Spacer(Modifier.width(4.dp))
                             GlassButton(
                                 Icons.Rounded.HighQuality,
-                                "Quality",
+                                I18n.t("quality", "Quality"),
                                 enabled,
                                 size = 34.dp,
                                 iconSize = 20.dp,
@@ -700,7 +700,7 @@ fun VideoContent(
                         }
                         GlassButton(
                             if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
-                            if (fullscreen) "Exit fullscreen" else "Fullscreen",
+                            if (fullscreen) I18n.t("exit_fullscreen", "Exit fullscreen") else I18n.t("fullscreen", "Fullscreen"),
                             enabled,
                             size = 34.dp,
                             iconSize = 22.dp,
@@ -850,7 +850,7 @@ fun AudioOnlyStage(
                 horizontalArrangement = Arrangement.spacedBy(30.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TonalSkip(Icons.Rounded.Replay10, "Back 10 seconds", interactive) { state.seekBy(-10_000) }
+                TonalSkip(Icons.Rounded.Replay10, I18n.t("back_10_seconds", "Back 10 seconds"), interactive) { state.seekBy(-10_000) }
                 MorphPlayButton(
                     playing = state.isPlaying,
                     buffering = state.isBuffering || (state.loading && state.details == null),
@@ -859,7 +859,7 @@ fun AudioOnlyStage(
                     content = c.onPrimary,
                     enabled = interactive,
                 ) { state.togglePlay() }
-                TonalSkip(Icons.Rounded.Forward10, "Forward 10 seconds", interactive) { state.seekBy(10_000) }
+                TonalSkip(Icons.Rounded.Forward10, I18n.t("forward_10_seconds", "Forward 10 seconds"), interactive) { state.seekBy(10_000) }
             }
             Spacer(Modifier.height(8.dp))
             var scrubPreview by remember { mutableStateOf<Long?>(null) }
@@ -965,7 +965,7 @@ private fun SkipSegmentPill(segment: SponsorBlock.Segment, enabled: Boolean, mod
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val ink = if (segment.category.color.luminance() > 0.45f) Color(0xFF151515) else Color.White
-        Text("Skip ${segment.category.short}", color = ink, fontSize = 12.sp, fontWeight = FontWeight.Black)
+        Text(I18n.t("skip_segment", "Skip {category}").replace("{category}", segment.category.shortLabel), color = ink, fontSize = 12.sp, fontWeight = FontWeight.Black)
         Icon(Icons.Rounded.SkipNext, null, tint = ink, modifier = Modifier.size(18.dp))
     }
 }
@@ -986,11 +986,11 @@ private fun SkippedNote(state: PlayerState, modifier: Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "Skipped ${formatDuration(skip.segment.lengthMs)} ${skip.segment.category.short}",
+            I18n.t("skipped_segment", "Skipped {duration} {category}").replace("{duration}", formatDuration(skip.segment.lengthMs)).replace("{category}", skip.segment.category.shortLabel),
             color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
         )
         Text(
-            "Undo",
+            I18n.t("undo", "Undo"),
             color = skip.segment.category.color, fontSize = 12.sp, fontWeight = FontWeight.Black,
             modifier = Modifier.pressable { state.undoSkip(skip) }.padding(horizontal = 10.dp, vertical = 8.dp),
         )
@@ -1021,7 +1021,7 @@ fun QualitySheet(state: PlayerState, onDismiss: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "Quality",
+                    I18n.t("quality", "Quality"),
                     fontFamily = RoundedHeavy,
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp,
@@ -1034,7 +1034,7 @@ fun QualitySheet(state: PlayerState, onDismiss: () -> Unit) {
 
             Spacer(Modifier.height(6.dp))
 
-            QualityRow("Auto", "Adapts to your internet speed", chosen == null) {
+            QualityRow(I18n.t("auto", "Auto"), I18n.t("quality_auto_hint", "Adapts to your internet speed"), chosen == null) {
                 state.setQuality(null)
                 onDismiss()
             }
@@ -1065,7 +1065,7 @@ private fun qualityTag(height: Int): String? = when {
     height >= 1440 -> "QHD"
     height >= 1080 -> "Full HD"
     height >= 720 -> "HD"
-    height <= 240 -> "Data saver"
+    height <= 240 -> I18n.t("data_saver", "Data saver")
     else -> null
 }
 
@@ -1099,7 +1099,7 @@ private fun QualityRow(title: String, subtitle: String?, selected: Boolean, onCl
         }
         if (selected) {
             Spacer(Modifier.width(8.dp))
-            Icon(Icons.Rounded.Check, "Selected", tint = c.onPrimaryContainer, modifier = Modifier.size(17.dp))
+            Icon(Icons.Rounded.Check, I18n.t("selected", "Selected"), tint = c.onPrimaryContainer, modifier = Modifier.size(17.dp))
         }
     }
 }
@@ -1162,13 +1162,13 @@ fun PlayerSettingsSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () ->
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "Playback Settings",
+                    I18n.t("playback_settings", "Playback Settings"),
                     fontFamily = RoundedHeavy,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
                     modifier = Modifier.weight(1f),
                 )
-                CircleAction(Icons.Rounded.Close, "Close", onDismiss)
+                CircleAction(Icons.Rounded.Close, I18n.t("close", "Close"), onDismiss)
             }
 
             Column(
@@ -1177,11 +1177,11 @@ fun PlayerSettingsSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () ->
                     .verticalScroll(rememberScrollState()),
             ) {
 
-                val qualityText = (state.decodedHeight?.let { "${it}p" } ?: state.details?.quality) ?: "Auto"
+                val qualityText = (state.decodedHeight?.let { "${it}p" } ?: state.details?.quality) ?: I18n.t("auto", "Auto")
                 PlayerSettingItem(
                     icon = Icons.Rounded.HighQuality,
-                    title = "Quality",
-                    value = if (QualityPreference.height == null) "Auto ($qualityText)" else qualityText,
+                    title = I18n.t("quality", "Quality"),
+                    value = if (QualityPreference.height == null) I18n.t("auto_quality", "Auto ({quality})").replace("{quality}", qualityText) else qualityText,
                     onClick = {
                         onDismiss()
                         state.sheet = PlayerSheet.Quality
@@ -1191,8 +1191,8 @@ fun PlayerSettingsSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () ->
 
                 PlayerSettingItem(
                     icon = Icons.Rounded.Speed,
-                    title = "Playback speed",
-                    value = if (state.speed == 1f) "Normal (1.0×)" else "${state.speed}×",
+                    title = I18n.t("playback_speed", "Playback speed"),
+                    value = if (state.speed == 1f) I18n.t("playback_speed_normal", "Normal (1.0×)") else "${state.speed}×",
                     onClick = {
                         onDismiss()
                         state.sheet = PlayerSheet.Speed
@@ -1201,18 +1201,18 @@ fun PlayerSettingsSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () ->
 
                 PlayerSettingItem(
                     icon = Icons.Rounded.Headphones,
-                    title = "Audio track",
-                    value = AudioTrackPreference.label.ifBlank { "Original" },
+                    title = I18n.t("audio_track", "Audio track"),
+                    value = AudioTrackPreference.label.ifBlank { I18n.t("original", "Original") },
                     onClick = {
                         onDismiss()
                         state.sheet = PlayerSheet.Audio
                     }
                 )
 
-                val captionsText = if (state.selectedSubtitleLanguage != null) "On" else "Off"
+                val captionsText = if (state.selectedSubtitleLanguage != null) I18n.t("on", "On") else I18n.t("off", "Off")
                 PlayerSettingItem(
                     icon = Icons.Rounded.Subtitles,
-                    title = "Captions",
+                    title = I18n.t("captions", "Captions"),
                     value = captionsText,
                     onClick = {
                         onDismiss()
@@ -1223,32 +1223,32 @@ fun PlayerSettingsSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () ->
 
                 PlayerSettingItem(
                     icon = Icons.Rounded.Repeat,
-                    title = "Loop video",
-                    value = if (state.loopEnabled) "On" else "Off",
+                    title = I18n.t("loop_video", "Loop video"),
+                    value = if (state.loopEnabled) I18n.t("on", "On") else I18n.t("off", "Off"),
                     onClick = { state.toggleLoop() }
                 )
 
 
                 PlayerSettingItem(
                     icon = Icons.Rounded.PlayCircle,
-                    title = "Autoplay",
-                    value = if (state.autoPlayEnabled) "On" else "Off",
+                    title = I18n.t("autoplay", "Autoplay"),
+                    value = if (state.autoPlayEnabled) I18n.t("on", "On") else I18n.t("off", "Off"),
                     onClick = { state.toggleAutoPlay() }
                 )
 
 
                 PlayerSettingItem(
                     icon = if (state.zoomToFill) Icons.Rounded.AspectRatio else Icons.Rounded.CropFree,
-                    title = "Video aspect",
-                    value = if (state.zoomToFill) "Zoom to fill" else "Fit to screen",
+                    title = I18n.t("video_aspect", "Video aspect"),
+                    value = if (state.zoomToFill) I18n.t("zoom_to_fill", "Zoom to fill") else I18n.t("fit_to_screen", "Fit to screen"),
                     onClick = { state.toggleZoomToFill() }
                 )
 
 
-                val zoomText = if (state.videoZoom > 1.05f) "${(state.videoZoom * 10).toInt() / 10f}× (Reset)" else "1.0×"
+                val zoomText = if (state.videoZoom > 1.05f) I18n.t("zoom_reset_value", "{zoom}× (Reset)").replace("{zoom}", "${(state.videoZoom * 10).toInt() / 10f}") else "1.0×"
                 PlayerSettingItem(
                     icon = Icons.Rounded.ZoomIn,
-                    title = "Video zoom",
+                    title = I18n.t("video_zoom", "Video zoom"),
                     value = zoomText,
                     onClick = { state.resetZoom() }
                 )
@@ -1259,7 +1259,7 @@ fun PlayerSettingsSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () ->
                 state.playingFormat?.let { format ->
                     PlayerSettingItem(
                         icon = Icons.Rounded.Info,
-                        title = "Video format",
+                        title = I18n.t("video_format", "Video format"),
                         value = format,
                         onClick = null
                     )
@@ -1309,7 +1309,7 @@ private fun BoxScope.ErrorPanel(message: String, onRetry: () -> Unit, onCollapse
         Spacer(Modifier.height(12.dp))
         Box(
             Modifier.pressable(onClick = onRetry).clip(CircleShape).background(Color.White).padding(horizontal = 18.dp, vertical = 9.dp),
-        ) { Text("Try again", color = Color(0xFF141414), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+        ) { Text(I18n.t("try_again", "Try again"), color = Color(0xFF141414), fontWeight = FontWeight.Bold, fontSize = 13.sp) }
     }
 }
 
@@ -1499,7 +1499,7 @@ fun MorphPlayButton(
         } else {
             Icon(
                 if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                if (playing) "Pause" else "Play",
+                if (playing) I18n.t("pause", "Pause") else I18n.t("play", "Play"),
                 tint = content,
                 modifier = Modifier.size(size * 0.46f),
             )

@@ -61,11 +61,18 @@ import org.schabi.newpipe.extractor.Page
 
 val LocalChannelOpener = staticCompositionLocalOf<(String) -> Unit> { {} }
 
-enum class ChannelTab(val label: String) {
+enum class ChannelTab(val raw: String) {
     Videos("Videos"),
     Shorts("Shorts"),
     Live("Live"),
-    Community("Community"),
+    Community("Community");
+
+    val label: String get() = when (this) {
+        Videos -> I18n.t("videos", "Videos")
+        Shorts -> I18n.t("tab_shorts", "Shorts")
+        Live -> I18n.t("live_tab", "Live")
+        Community -> I18n.t("community_tab", "Community")
+    }
 }
 
 @Stable
@@ -422,8 +429,8 @@ fun ChannelScreen(
         val d = state.details
         when {
             d == null && state.error != null -> Box(Modifier.padding(top = top)) { EmptyState(
-                Icons.Rounded.CloudOff, "Couldn't load this channel", state.error.orEmpty(),
-                action = { PillButton("Try again", state::load) },
+                Icons.Rounded.CloudOff, I18n.t("couldnt_load_channel", "Couldn't load this channel"), state.error.orEmpty(),
+                action = { PillButton(I18n.t("try_again", "Try again"), state::load) },
             ) }
             d == null -> Box(Modifier.fillMaxWidth().padding(top = top + 60.dp), Alignment.Center) {
                 CircularProgressIndicator(color = c.primary, strokeWidth = 4.dp, modifier = Modifier.size(36.dp))
@@ -495,8 +502,8 @@ fun ChannelScreen(
                             item {
                                 EmptyState(
                                     Icons.Rounded.CloudOff,
-                                    "No Shorts yet",
-                                    "This channel hasn't posted any Shorts.",
+                                    I18n.t("no_shorts_yet", "No Shorts yet"),
+                                    I18n.t("channel_no_shorts", "This channel hasn't posted any Shorts."),
                                 )
                             }
                         } else {
@@ -521,8 +528,8 @@ fun ChannelScreen(
                             item {
                                 EmptyState(
                                     Icons.Rounded.CloudOff,
-                                    "No live streams",
-                                    "This channel has no active live streams or past live broadcasts.",
+                                    I18n.t("no_live_streams", "No live streams"),
+                                    I18n.t("channel_no_live", "This channel has no active live streams or past live broadcasts."),
                                 )
                             }
                         } else {
@@ -542,8 +549,8 @@ fun ChannelScreen(
                             item {
                                 EmptyState(
                                     Icons.Rounded.CloudOff,
-                                    "No community posts",
-                                    "This channel hasn't posted anything to their community tab yet.",
+                                    I18n.t("no_community_posts", "No community posts"),
+                                    I18n.t("channel_no_community", "This channel hasn't posted anything to their community tab yet."),
                                 )
                             }
                         } else {

@@ -100,8 +100,8 @@ private fun AnonHomeBanner(onSignIn: () -> Unit, onSearch: () -> Unit) {
     ) {
         Icon(Icons.Rounded.AccountCircle, contentDescription = null, tint = c.onSurfaceVariant, modifier = Modifier.size(32.dp))
         Column(Modifier.weight(1f)) {
-            Text("Sign in for recommendations", fontWeight = FontWeight.Medium, fontSize = 14.sp)
-            Text("Showing popular videos · Tap to personalise", color = c.onSurfaceVariant, fontSize = 12.sp)
+            Text(I18n.t("sign_in_recommendations", "Sign in for recommendations"), fontWeight = FontWeight.Medium, fontSize = 14.sp)
+            Text(I18n.t("showing_popular_personalise", "Showing popular videos · Tap to personalise"), color = c.onSurfaceVariant, fontSize = 12.sp)
         }
     }
 }
@@ -225,11 +225,11 @@ fun HomeScreen(
                 Box(Modifier.fillMaxSize().padding(contentPadding.withTop(top))) {
                     EmptyState(
                         icon = if (activeFilter == HomeFilter.Subscribed) Icons.Rounded.Subscriptions else Icons.Rounded.TravelExplore,
-                        title = "No ${activeFilter.label.lowercase()} videos",
+                        title = I18n.t("no_filter_videos", "No {filter} videos").replace("{filter}", activeFilter.label.lowercase()),
                         body = if (activeFilter == HomeFilter.Subscribed)
-                            "No videos from your subscribed channels were found in the current home feed."
+                            I18n.t("no_subscribed_videos_home", "No videos from your subscribed channels were found in the current home feed.")
                         else
-                            "There are no ${activeFilter.label.lowercase()} videos in your home feed right now.",
+                            I18n.t("no_filter_videos_body", "There are no {filter} videos in your home feed right now.").replace("{filter}", activeFilter.label.lowercase()),
                         action = { PillButton(I18n.t("show_all", "Show all"), { activeFilter = HomeFilter.All }) },
                     )
                 }
@@ -254,10 +254,16 @@ fun HomeScreen(
     }
 }
 
-enum class SubFilter(val label: String) {
+enum class SubFilter(val raw: String) {
     Videos("Videos"),
     Live("Live"),
-    Community("Community"),
+    Community("Community");
+
+    val label: String get() = when (this) {
+        Videos -> I18n.t("filter_videos", "Videos")
+        Live -> I18n.t("filter_live", "Live")
+        Community -> I18n.t("community_tab", "Community")
+    }
 }
 
 @Composable
@@ -388,8 +394,8 @@ fun SubscriptionsScreen(
                                 Box(Modifier.fillMaxSize().padding(contentPadding.withTop(top))) {
                                     EmptyState(
                                         icon = Icons.Rounded.Subscriptions,
-                                        title = "Community posts",
-                                        body = "Select a channel above to read its community posts and updates.",
+                                        title = I18n.t("community_posts", "Community posts"),
+                                        body = I18n.t("select_channel_community", "Select a channel above to read its community posts and updates."),
                                     )
                                 }
                             }
@@ -402,8 +408,8 @@ fun SubscriptionsScreen(
                                 Box(Modifier.fillMaxSize().padding(contentPadding.withTop(top))) {
                                     EmptyState(
                                         icon = Icons.Rounded.CloudOff,
-                                        title = "No community posts",
-                                        body = "No community posts found for ${selectedChannel.name}.",
+                                        title = I18n.t("no_community_posts", "No community posts"),
+                                        body = I18n.t("no_community_posts_for", "No community posts found for {channel}.").replace("{channel}", selectedChannel.name),
                                     )
                                 }
                             }
@@ -420,9 +426,9 @@ fun SubscriptionsScreen(
                         Box(Modifier.fillMaxSize().padding(contentPadding.withTop(top))) {
                             EmptyState(
                                 icon = Icons.Rounded.Subscriptions,
-                                title = "No live streams",
-                                body = if (selectedChannel != null) "${selectedChannel.name} isn't live right now."
-                                else "None of your subscribed channels are live right now.",
+                                title = I18n.t("no_live_streams", "No live streams"),
+                                body = if (selectedChannel != null) I18n.t("channel_not_live", "{channel} isn't live right now.").replace("{channel}", selectedChannel.name)
+                                else I18n.t("no_subscribed_live", "None of your subscribed channels are live right now."),
                             )
                         }
                     }
@@ -430,8 +436,8 @@ fun SubscriptionsScreen(
                         Box(Modifier.fillMaxSize().padding(contentPadding.withTop(top))) {
                             EmptyState(
                                 icon = Icons.Rounded.Subscriptions,
-                                title = "Nothing recent",
-                                body = "No new uploads from ${selectedChannel.name} in this feed yet.",
+                                title = I18n.t("nothing_recent", "Nothing recent"),
+                                body = I18n.t("no_new_uploads_from", "No new uploads from {channel} in this feed yet.").replace("{channel}", selectedChannel.name),
                             )
                         }
                     }
@@ -450,9 +456,9 @@ fun SubscriptionsScreen(
                     item {
                         EmptyState(
                             icon = Icons.Rounded.Subscriptions,
-                            title = "Your subscriptions",
-                            body = "Sign in with Google to see new videos from the channels you follow.",
-                            action = { PillButton("Sign in with Google", onSignIn) },
+                            title = I18n.t("your_subscriptions", "Your subscriptions"),
+                            body = I18n.t("sign_in_subscriptions_body", "Sign in with Google to see new videos from the channels you follow."),
+                            action = { PillButton(I18n.t("sign_in_google", "Sign in with Google"), onSignIn) },
                         )
                     }
                 }
@@ -511,14 +517,14 @@ private fun SubscriptionsChannelStrip(
                 ) {
                     Icon(
                         Icons.Rounded.Subscriptions,
-                        contentDescription = "All channels",
+                        contentDescription = I18n.t("all_channels", "All channels"),
                         tint = c.onSurface,
                         modifier = Modifier.size(22.dp),
                     )
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "All",
+                    I18n.t("filter_all", "All"),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = c.onSurface,
@@ -541,7 +547,7 @@ fun AllSubscriptionsScreen(
         Column(Modifier.fillMaxSize()) {
             BackScreenHeader(onBack = onBack) {
                 Text(
-                    "All subscriptions",
+                    I18n.t("all_subscriptions", "All subscriptions"),
                     modifier = Modifier.weight(1f),
                     fontFamily = RoundedHeavy,
                     fontWeight = FontWeight.ExtraBold,
@@ -613,9 +619,9 @@ fun LibraryScreen(
                 item {
                     EmptyState(
                         icon = Icons.Rounded.VideoLibrary,
-                        title = "Your library",
-                        body = "Sign in with Google for your history, Watch later, liked videos and playlists.",
-                        action = { PillButton("Sign in with Google", onSignIn) },
+                        title = I18n.t("your_library", "Your library"),
+                        body = I18n.t("sign_in_library_body", "Sign in with Google for your history, Watch later, liked videos and playlists."),
+                        action = { PillButton(I18n.t("sign_in_google", "Sign in with Google"), onSignIn) },
                     )
                 }
                 return@LazyColumn
@@ -634,7 +640,7 @@ fun LibraryScreen(
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, strokeWidth = 4.dp, modifier = Modifier.size(28.dp))
                     }
                     else -> Text(
-                        lib.history.error ?: "Nothing watched yet.",
+                        lib.history.error ?: I18n.t("nothing_watched", "Nothing watched yet."),
                         color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp,
                         modifier = Modifier.padding(horizontal = 20.dp),
                     )
@@ -652,7 +658,7 @@ fun LibraryScreen(
                     ) {
                         SectionTitle(I18n.t("subscriptions", "Subscriptions"), modifier = Modifier.padding(0.dp))
                         Text(
-                            "All",
+                            I18n.t("filter_all", "All"),
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp,
@@ -690,11 +696,11 @@ fun LibraryScreen(
                 }
             }
 
-            item(key = "playlistsTitle") { SectionTitle("Playlists") }
+            item(key = "playlistsTitle") { SectionTitle(I18n.t("playlists", "Playlists")) }
             val pinned = listOf(
-                PlaylistRef("WL", "Watch later", null, null),
+                PlaylistRef("WL", I18n.t("watch_later", "Watch later"), null, null),
                 PlaylistRef("MDL", "LePlay Music Downloads", null, null),
-                PlaylistRef("LL", "Liked videos", null, null),
+                PlaylistRef("LL", I18n.t("liked_videos", "Liked videos"), null, null),
             )
             items((pinned + lib.playlists).chunked(2), key = { row -> row.joinToString { it.id } }) { row ->
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -782,8 +788,8 @@ fun PlaylistScreen(
     ) { top ->
         if (feed.videos.isEmpty() && !feed.loading && feed.error == null && !feed.hasMore) {
             val icon = if (playlist.id == "DL") Icons.Rounded.Download else Icons.Rounded.VideoLibrary
-            val title = if (playlist.id == "DL") "No downloads yet" else "Nothing here yet"
-            val body = if (playlist.id == "DL") "Downloaded videos will appear here." else "Videos you add to this playlist will show up here."
+            val title = if (playlist.id == "DL") I18n.t("no_downloads_yet", "No downloads yet") else I18n.t("nothing_here", "Nothing here yet")
+            val body = if (playlist.id == "DL") I18n.t("downloads_empty_body", "Downloaded videos will appear here.") else I18n.t("playlist_empty_body", "Videos you add to this playlist will show up here.")
             Box(Modifier.padding(top = top)) { EmptyState(icon, title, body) }
         } else {
             FeedList(feed, contentPadding.withTop(top), onOpen, indicatorTop = top, channelAvatarSeed = avatarSeed)
@@ -941,7 +947,7 @@ fun SearchScreen(
                     Box(Modifier.weight(1f)) {
                         if (state.query.isEmpty()) {
                             Text(
-                                "Search YouTube",
+                                I18n.t("search_youtube", "Search YouTube"),
                                 color = c.onSurfaceVariant,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.SemiBold,
@@ -973,7 +979,7 @@ fun SearchScreen(
                                 showSearchKeyboard()
                             },
                             contentAlignment = Alignment.Center,
-                        ) { Icon(Icons.Rounded.Close, "Clear", tint = c.onSurfaceVariant, modifier = Modifier.size(20.dp)) }
+                        ) { Icon(Icons.Rounded.Close, I18n.t("clear", "Clear"), tint = c.onSurfaceVariant, modifier = Modifier.size(20.dp)) }
                     }
                 }
             }
@@ -999,8 +1005,8 @@ fun SearchScreen(
                 } else if (state.suggestions.isEmpty() && matchingHistory.isEmpty()) {
                     EmptyState(
                         icon = Icons.Rounded.Search,
-                        title = "Keep typing",
-                        body = "Suggestions appear as you enter a search.",
+                        title = I18n.t("keep_typing", "Keep typing"),
+                        body = I18n.t("suggestions_hint", "Suggestions appear as you enter a search."),
                     )
                 } else {
                     LazyColumn(contentPadding = contentPadding) {
@@ -1017,7 +1023,7 @@ fun SearchScreen(
                             ) {
                                 Icon(
                                     Icons.Rounded.History,
-                                    "Recent search",
+                                    I18n.t("recent_search", "Recent search"),
                                     tint = c.primary,
                                     modifier = Modifier.size(22.dp),
                                 )
@@ -1075,9 +1081,9 @@ fun SearchScreen(
             }
             state.error != null -> EmptyState(
                 icon = Icons.Rounded.CloudOff,
-                title = "Search didn't load",
+                title = I18n.t("search_failed", "Search didn't load"),
                 body = state.error.orEmpty(),
-                action = { PillButton("Try again", { state.submit() }) },
+                action = { PillButton(I18n.t("try_again", "Try again"), { state.submit() }) },
             )
             state.submitted.isEmpty() -> {
                 val history = SearchHistory.queries
@@ -1091,7 +1097,7 @@ fun SearchScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    "Recent searches",
+                                    I18n.t("recent_searches", "Recent searches"),
                                     fontFamily = RoundedHeavy,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
@@ -1104,7 +1110,7 @@ fun SearchScreen(
                                         .padding(horizontal = 8.dp, vertical = 4.dp),
                                 ) {
                                     Text(
-                                        "Clear all",
+                                        I18n.t("clear_all", "Clear all"),
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 12.5.sp,
                                         color = c.primary,
@@ -1152,15 +1158,15 @@ fun SearchScreen(
                 } else {
                     EmptyState(
                         icon = Icons.Rounded.TravelExplore,
-                        title = "Search YouTube",
-                        body = "Results play straight away, with no ads and no sign-in.",
+                        title = I18n.t("search_youtube", "Search YouTube"),
+                        body = I18n.t("search_promo_body", "Results play straight away, with no ads and no sign-in."),
                     )
                 }
             }
             state.results.isEmpty() -> EmptyState(
                 icon = Icons.Rounded.History,
-                title = "Nothing found",
-                body = "No videos matched “${state.submitted}”.",
+                title = I18n.t("nothing_found", "Nothing found"),
+                body = I18n.t("no_videos_matched", "No videos matched “{query}”.").replace("{query}", state.submitted),
             )
             else -> {
                 val list = rememberScrollToTop(scrollToTop)

@@ -86,7 +86,7 @@ data class UpdateInfo(
  * newer than the latest published release). Keep this in sync with the build.
  */
 internal val RELEASE_NOTES = """
-    • LePlay 0.0.4: channel sort chips now work on Indonesian YouTube accounts, and chat replay is detected for signed-out users too.
+    • LePlay 0.0.5: Indonesian is now the default language with the full interface translated, video descriptions can be selected and copied, and viewer counts use Indonesian formatting (rb, jt, M).
     • Ad-free YouTube and YouTube Music playback with a Liquid Glass UI.
     • Personalised Shorts feed, synced lyrics, and high-quality downloads up to 4K HDR.
     • Background playback, Picture-in-Picture, and Android TV mode.
@@ -124,7 +124,7 @@ class UpdateState(private val scope: CoroutineScope) {
             val latest = withContext(Dispatchers.IO) { runCatching { fetchLatest() }.getOrNull() }
             checking = false
             if (latest == null) {
-                if (manual) message = "Couldn't check for updates. Try again in a moment."
+                if (manual) message = I18n.t("update_check_failed", "Couldn't check for updates. Try again in a moment.")
                 return@launch
             }
             if (isNewer(latest.version, BuildConfig.VERSION_NAME)) {
@@ -132,7 +132,7 @@ class UpdateState(private val scope: CoroutineScope) {
                 error = null
                 visible = true
             } else if (manual) {
-                message = "You're on the latest version (${BuildConfig.VERSION_NAME})."
+                message = I18n.t("latest_version_notice", "You're on the latest version ({version}).").replace("{version}", BuildConfig.VERSION_NAME)
             }
         }
     }
@@ -153,7 +153,7 @@ class UpdateState(private val scope: CoroutineScope) {
                 downloaded = file
                 install(context)
             } else {
-                error = "Download failed. Check your connection and try again."
+                error = I18n.t("update_download_failed", "Download failed. Check your connection and try again.")
             }
         }
     }
@@ -168,7 +168,7 @@ class UpdateState(private val scope: CoroutineScope) {
     fun install(context: Context) {
         val file = downloaded ?: return
         if (Build.VERSION.SDK_INT >= 26 && !context.packageManager.canRequestPackageInstalls()) {
-            error = "Allow installs from LePlay, then tap Install again."
+            error = I18n.t("update_allow_installs", "Allow installs from LePlay, then tap Install again.")
             runCatching {
                 context.startActivity(
                     Intent(
@@ -188,7 +188,7 @@ class UpdateState(private val scope: CoroutineScope) {
             }
             context.startActivity(intent)
         }.onFailure {
-            error = "Couldn't open the installer. Try again."
+            error = I18n.t("update_installer_failed", "Couldn't open the installer. Try again.")
         }
     }
 
@@ -370,7 +370,7 @@ fun UpdateOverlay(state: UpdateState, backdrop: Backdrop) {
                         Spacer(Modifier.width(13.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                "Update available",
+                                I18n.t("update_available", "Update available"),
                                 color = c.onSurface,
                                 fontSize = 19.sp,
                                 fontWeight = FontWeight.Bold,
@@ -392,7 +392,7 @@ fun UpdateOverlay(state: UpdateState, backdrop: Backdrop) {
                         ) {
                             Icon(
                                 Icons.Rounded.Close,
-                                contentDescription = "Close update dialog",
+                                contentDescription = I18n.t("close_update_dialog", "Close update dialog"),
                                 tint = c.onSurfaceVariant,
                                 modifier = Modifier.size(19.dp),
                             )
@@ -401,7 +401,7 @@ fun UpdateOverlay(state: UpdateState, backdrop: Backdrop) {
 
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        "What's new",
+                        I18n.t("whats_new", "What's new"),
                         color = c.onSurface,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
@@ -443,7 +443,7 @@ fun UpdateOverlay(state: UpdateState, backdrop: Backdrop) {
                         )
                         Spacer(Modifier.height(7.dp))
                         Text(
-                            "${(state.progress * 100).toInt()}% · downloading LePlay.apk",
+                            I18n.t("update_downloading", "{percent}% · downloading LePlay.apk").replace("{percent}", "${(state.progress * 100).toInt()}"),
                             color = c.onSurfaceVariant,
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.Medium,
@@ -462,7 +462,7 @@ fun UpdateOverlay(state: UpdateState, backdrop: Backdrop) {
                             },
                         ) {
                             Text(
-                                "Cancel",
+                                I18n.t("cancel", "Cancel"),
                                 color = c.onSurfaceVariant,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -486,7 +486,7 @@ fun UpdateOverlay(state: UpdateState, backdrop: Backdrop) {
                                 )
                             } else {
                                 Text(
-                                    "Install",
+                                    I18n.t("install", "Install"),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
                                 )
@@ -495,7 +495,7 @@ fun UpdateOverlay(state: UpdateState, backdrop: Backdrop) {
                     }
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        "Downloaded from GitHub Releases · ${update?.tag.orEmpty()}",
+                        I18n.t("update_downloaded_from", "Downloaded from GitHub Releases · {tag}").replace("{tag}", update?.tag.orEmpty()),
                         color = c.onSurfaceVariant.copy(alpha = 0.7f),
                         fontSize = 10.5.sp,
                         textAlign = TextAlign.Center,

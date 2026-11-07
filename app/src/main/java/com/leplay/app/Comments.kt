@@ -128,7 +128,7 @@ class CommentsState(private val scope: CoroutineScope) {
         liked[comment.id] = now
         scope.launch {
             runCatching { CommentPosting.setLiked(id, comment.id, now) }
-                .onFailure { liked[comment.id] = !now; onError(it.message ?: "Couldn't like that comment.") }
+                .onFailure { liked[comment.id] = !now; onError(it.message ?: I18n.t("comment_like_failed", "Couldn't like that comment.")) }
         }
     }
     val repliesLoading = mutableStateMapOf<String, Boolean>()
@@ -245,11 +245,11 @@ class CommentsState(private val scope: CoroutineScope) {
                 val profile = Account.profile
                 val mine = Comment(
                     id = "local-${System.nanoTime()}",
-                    author = profile?.handle ?: profile?.name ?: "You",
+                    author = profile?.handle ?: profile?.name ?: I18n.t("you", "You"),
                     channelId = null,
                     name = profile?.name,
                     avatar = profile?.avatar,
-                    text = text, likes = 0, ago = "just now",
+                    text = text, likes = 0, ago = I18n.t("just_now", "just now"),
                     pinned = false, hearted = false, replyCount = 0, repliesToken = null,
                 )
                 if (threadId == null) {
@@ -260,7 +260,7 @@ class CommentsState(private val scope: CoroutineScope) {
                 }
                 draft = ""
                 replyingTo = null
-            }.onFailure { postError = it.message ?: "Couldn't post your comment." }
+            }.onFailure { postError = it.message ?: I18n.t("comment_post_failed", "Couldn't post your comment.") }
             posting = false
         }
     }
@@ -292,9 +292,9 @@ fun CommentsCard(state: CommentsState, onOpen: () -> Unit, live: Boolean = false
             }
             Text(
                 when {
-                    live -> "Live chat"
+                    live -> I18n.t("live_chat", "Live chat")
                     replay -> I18n.t("chat_replay", "Chat replay")
-                    else -> "Comments"
+                    else -> I18n.t("comments", "Comments")
                 },
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
@@ -307,7 +307,7 @@ fun CommentsCard(state: CommentsState, onOpen: () -> Unit, live: Boolean = false
         Spacer(Modifier.height(4.dp))
         if (live) {
             Text(
-                "Chat is live — tap to join the conversation.",
+                I18n.t("live_chat_card_hint", "Chat is live — tap to join the conversation."),
                 color = c.onSurfaceVariant,
                 fontSize = 12.sp,
             )
@@ -319,7 +319,7 @@ fun CommentsCard(state: CommentsState, onOpen: () -> Unit, live: Boolean = false
             )
         } else {
             when {
-                state.disabled -> Text("Comments are turned off for this video.", color = c.onSurfaceVariant, fontSize = 12.sp)
+                state.disabled -> Text(I18n.t("comments_disabled", "Comments are turned off for this video."), color = c.onSurfaceVariant, fontSize = 12.sp)
                 first != null -> Row(verticalAlignment = Alignment.CenterVertically) {
                     ChannelAvatar(first.avatar, first.author, size = 22)
                     Spacer(Modifier.width(8.dp))
@@ -335,7 +335,7 @@ fun CommentsCard(state: CommentsState, onOpen: () -> Unit, live: Boolean = false
                 }
                 state.loading -> CircularProgressIndicator(color = c.primary, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
                 state.error != null -> Text(state.error.orEmpty(), color = c.onSurfaceVariant, fontSize = 12.sp)
-                else -> Text(if (Account.signedIn) "No comments yet. Add the first one." else "No comments yet.", color = c.onSurfaceVariant, fontSize = 12.sp)
+                else -> Text(if (Account.signedIn) I18n.t("no_comments_first", "No comments yet. Add the first one.") else I18n.t("no_comments", "No comments yet."), color = c.onSurfaceVariant, fontSize = 12.sp)
             }
         }
     }
@@ -462,7 +462,7 @@ fun CommentsPanel(
                     }
                     Spacer(Modifier.weight(1f))
                     Box(Modifier.size(44.dp).pressable { close() }, contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.Close, "Close comments", tint = c.onSurfaceVariant)
+                        Icon(Icons.Rounded.Close, I18n.t("close_comments", "Close comments"), tint = c.onSurfaceVariant)
                     }
                 }
             }
@@ -522,7 +522,7 @@ private fun Composer(state: CommentsState) {
             Row(Modifier.padding(start = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("${I18n.t("replying_to", "Replying to")} ${target.displayName()}", color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 Box(Modifier.size(28.dp).pressable { state.replyingTo = null }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.Close, "Cancel reply", tint = c.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Rounded.Close, I18n.t("cancel_reply", "Cancel reply"), tint = c.onSurfaceVariant, modifier = Modifier.size(16.dp))
                 }
             }
         }
@@ -559,7 +559,7 @@ private fun Composer(state: CommentsState) {
                 contentAlignment = Alignment.Center,
             ) {
                 if (state.posting) CircularProgressIndicator(color = c.onPrimary, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-                else Icon(Icons.AutoMirrored.Rounded.Send, "Post", tint = if (canSend) c.onPrimary else c.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                else Icon(Icons.AutoMirrored.Rounded.Send, I18n.t("post", "Post"), tint = if (canSend) c.onPrimary else c.onSurfaceVariant, modifier = Modifier.size(20.dp))
             }
         }
     }
@@ -580,7 +580,7 @@ private fun CreatorHeartBadge(avatarUrl: String?, name: String) {
                 .background(c.surface),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.Favorite, "Hearted by creator", tint = c.primary, modifier = Modifier.size(9.dp))
+            Icon(Icons.Rounded.Favorite, I18n.t("hearted_by_creator", "Hearted by creator"), tint = c.primary, modifier = Modifier.size(9.dp))
         }
     }
 }
@@ -599,7 +599,7 @@ private fun CommentRow(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (comment.pinned) Icon(Icons.Rounded.PushPin, "Pinned", tint = c.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                if (comment.pinned) Icon(Icons.Rounded.PushPin, I18n.t("pinned", "Pinned"), tint = c.onSurfaceVariant, modifier = Modifier.size(14.dp))
                 Text(comment.displayName(), fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 comment.ago?.let { Text(it, color = c.onSurfaceVariant, fontSize = 12.sp, maxLines = 1) }
             }
@@ -619,7 +619,7 @@ private fun CommentRow(
                 ) {
                     FlourishIcon(
                         if (isLiked) Icons.Rounded.ThumbUp else Icons.Outlined.ThumbUp,
-                        if (isLiked) "Unlike" else "Like",
+                        if (isLiked) I18n.t("unlike", "Unlike") else I18n.t("like", "Like"),
                         active = isLiked, kind = Flourish.Pop, tint = likeTint, size = 16.dp,
                     )
                     val count = comment.likes + if (isLiked) 1 else 0
@@ -633,7 +633,7 @@ private fun CommentRow(
                     if (creatorName.isNotBlank()) {
                         CreatorHeartBadge(creatorAvatar, creatorName)
                     } else {
-                        Icon(Icons.Rounded.Favorite, "Hearted by creator", tint = c.primary, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Rounded.Favorite, I18n.t("hearted_by_creator", "Hearted by creator"), tint = c.primary, modifier = Modifier.size(14.dp))
                     }
                 }
                 if (Account.signedIn && !comment.id.startsWith("local-")) {

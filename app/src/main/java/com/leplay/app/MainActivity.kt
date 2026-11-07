@@ -1011,7 +1011,7 @@ fun LePlayTubeApp() {
                             if (showPlayer) player.expanded = false
                         },
                     ) {
-                        Text("VIEW", fontWeight = FontWeight.Bold, color = c.primary, fontSize = 13.sp)
+                        Text(I18n.t("view", "VIEW"), fontWeight = FontWeight.Bold, color = c.primary, fontSize = 13.sp)
                     }
                 }
             }

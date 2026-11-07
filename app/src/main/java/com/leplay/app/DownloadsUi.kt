@@ -73,7 +73,7 @@ fun DownloadQualitySheet(video: VideoItem, onDownloadStarted: ((String) -> Unit)
                 // Highest available by default: a 4K video should offer 4K, not 720p.
                 selected = list.firstOrNull()?.height
             }
-            .onFailure { error = it.message ?: "Could not load the available qualities" }
+            .onFailure { error = it.message ?: I18n.t("dl_qualities_error", "Could not load the available qualities") }
     }
 
     ModalBottomSheet(
@@ -88,7 +88,7 @@ fun DownloadQualitySheet(video: VideoItem, onDownloadStarted: ((String) -> Unit)
                 .padding(bottom = 26.dp),
         ) {
             Text(
-                "Download video",
+                I18n.t("download_video", "Download video"),
                 fontFamily = RoundedHeavy,
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
@@ -131,7 +131,7 @@ fun DownloadQualitySheet(video: VideoItem, onDownloadStarted: ((String) -> Unit)
                     CircularProgressIndicator(modifier = Modifier.size(30.dp), strokeWidth = 3.dp)
                 }
                 options!!.isEmpty() -> Text(
-                    "This video has no downloadable qualities.",
+                    I18n.t("dl_no_qualities", "This video has no downloadable qualities."),
                     color = c.onSurfaceVariant,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(vertical = 16.dp),
@@ -153,7 +153,7 @@ fun DownloadQualitySheet(video: VideoItem, onDownloadStarted: ((String) -> Unit)
                         onClick = {
                             if (choice != null) {
                                 val added = Downloads.enqueue(video, choice)
-                                onDownloadStarted?.invoke(if (added) "Downloading ${choice.label} • ${video.title}" else "Already in downloads")
+                                onDownloadStarted?.invoke(if (added) I18n.t("dl_downloading_toast", "Downloading {label} • {title}").replace("{label}", choice.label).replace("{title}", video.title) else I18n.t("dl_already_in_downloads", "Already in downloads"))
                                 onDismiss()
                             }
                         },
@@ -165,7 +165,7 @@ fun DownloadQualitySheet(video: VideoItem, onDownloadStarted: ((String) -> Unit)
                         Icon(Icons.Rounded.Download, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            if (choice == null) "Download" else "Download ${choice.label}${sizeSuffix(choice.estimatedBytes)}",
+                            if (choice == null) I18n.t("download", "Download") else I18n.t("dl_download_label", "Download {label}{size}").replace("{label}", choice.label).replace("{size}", sizeSuffix(choice.estimatedBytes)),
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
                         )
@@ -205,7 +205,7 @@ private fun QualityChoiceRow(option: DownloadOption, selected: Boolean, onClick:
                 }
                 if (isNotEmpty()) append(" · ")
                 append(option.containerLabel)
-                append(if (option.needsMux) " · video + audio" else " · with audio")
+                append(if (option.needsMux) I18n.t("dl_mux_suffix", " · video + audio") else I18n.t("dl_with_audio_suffix", " · with audio"))
             }
             Text(subtitle, color = c.onSurfaceVariant, fontSize = 11.5.sp)
         }
@@ -234,7 +234,7 @@ fun DownloadsScreen(
     val shown = if (section == 0) videos else music
     CollapsingHeaderLayout(
         resetKey = scrollToTop to listOf(tasks.size, tasks.count { it.status == DownloadStatus.Complete }),
-        header = { ScreenHeader(title = "Downloads") { HeaderActions(onSearch, onAccount) } },
+        header = { ScreenHeader(title = I18n.t("downloads", "Downloads")) { HeaderActions(onSearch, onAccount) } },
     ) { top ->
         LazyColumn(contentPadding = contentPadding.withTop(top)) {
             item(key = "sections") {
@@ -242,8 +242,8 @@ fun DownloadsScreen(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    DownloadSectionPill("Videos", videos.size, section == 0) { section = 0 }
-                    DownloadSectionPill("Music", music.size, section == 1) { section = 1 }
+                    DownloadSectionPill(I18n.t("filter_videos", "Videos"), videos.size, section == 0) { section = 0 }
+                    DownloadSectionPill(I18n.t("tab_music", "Music"), music.size, section == 1) { section = 1 }
                 }
             }
             if (shown.isEmpty()) {
@@ -251,15 +251,15 @@ fun DownloadsScreen(
                     Box(Modifier.fillMaxWidth().padding(top = 28.dp)) {
                         EmptyState(
                             icon = if (section == 0) Icons.Rounded.Download else Icons.Rounded.MusicNote,
-                            title = if (section == 0) "No videos downloaded yet" else "No music downloaded yet",
+                            title = if (section == 0) I18n.t("dl_empty_videos", "No videos downloaded yet") else I18n.t("dl_empty_music", "No music downloaded yet"),
                             body = if (section == 0) {
-                                "Videos you download are saved here and play without a connection."
+                                I18n.t("dl_empty_videos_sub", "Videos you download are saved here and play without a connection.")
                             } else {
-                                "Songs you download from Music are saved here for offline listening."
+                                I18n.t("dl_empty_music_sub", "Songs you download from Music are saved here for offline listening.")
                             },
                             action = {
                                 PillButton(
-                                    if (section == 0) "Browse videos" else "Browse music",
+                                    if (section == 0) I18n.t("dl_browse_videos", "Browse videos") else I18n.t("dl_browse_music", "Browse music"),
                                     if (section == 0) onBrowse else onBrowseMusic,
                                 )
                             },
@@ -270,13 +270,13 @@ fun DownloadsScreen(
                 val active = shown.filter { it.status != DownloadStatus.Complete }
                 val finished = shown.filter { it.status == DownloadStatus.Complete }
                 if (active.isNotEmpty()) {
-                    item(key = "activeTitle") { SectionTitle("Downloading") }
+                    item(key = "activeTitle") { SectionTitle(I18n.t("dl_section_downloading", "Downloading")) }
                     items(active, key = { "a-" + it.key }) { task ->
                         DownloadRow(task, onOpen = null)
                     }
                 }
                 if (finished.isNotEmpty()) {
-                    item(key = "doneTitle") { SectionTitle(if (section == 0) "Videos" else "Music") }
+                    item(key = "doneTitle") { SectionTitle(if (section == 0) I18n.t("filter_videos", "Videos") else I18n.t("tab_music", "Music")) }
                     items(finished, key = { "d-" + it.key }) { task ->
                         DownloadRow(
                             task,
@@ -360,7 +360,7 @@ private fun DownloadRow(task: DownloadTask, onOpen: (() -> Unit)?) {
                     if (task.height > 0) {
                         "${task.channel} · ${task.height}p${if (task.hdr) " HDR" else ""}"
                     } else {
-                        "${task.channel} · Audio"
+                        "${task.channel} · ${I18n.t("audio", "Audio")}"
                     },
                     color = c.onSurfaceVariant,
                     fontSize = 11.5.sp,
@@ -388,25 +388,25 @@ private fun DownloadRow(task: DownloadTask, onOpen: (() -> Unit)?) {
                         ) { menu = true },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Rounded.MoreVert, "More options", tint = c.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Rounded.MoreVert, I18n.t("more_options", "More options"), tint = c.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     when (task.status) {
                         DownloadStatus.Downloading, DownloadStatus.Queued, DownloadStatus.Processing -> DropdownMenuItem(
-                            text = { Text("Pause") },
+                            text = { Text(I18n.t("pause", "Pause")) },
                             onClick = { menu = false; Downloads.pause(task) },
                         )
                         DownloadStatus.Paused, DownloadStatus.Failed -> DropdownMenuItem(
-                            text = { Text("Resume") },
+                            text = { Text(I18n.t("resume", "Resume")) },
                             onClick = { menu = false; Downloads.resume(task) },
                         )
                         DownloadStatus.Complete -> DropdownMenuItem(
-                            text = { Text("Play offline") },
+                            text = { Text(I18n.t("play_offline", "Play offline")) },
                             onClick = { menu = false; onOpen?.invoke() },
                         )
                     }
                     DropdownMenuItem(
-                        text = { Text("Delete", color = c.error) },
+                        text = { Text(I18n.t("delete", "Delete"), color = c.error) },
                         onClick = { menu = false; Downloads.remove(task) },
                     )
                 }
@@ -433,12 +433,12 @@ private fun DownloadRow(task: DownloadTask, onOpen: (() -> Unit)?) {
                 Spacer(Modifier.weight(1f))
                 Text(
                     when (task.status) {
-                        DownloadStatus.Downloading -> "Downloading"
-                        DownloadStatus.Queued -> "Waiting"
-                        DownloadStatus.Processing -> "Finishing"
-                        DownloadStatus.Paused -> "Paused"
-                        DownloadStatus.Failed -> "Failed"
-                        DownloadStatus.Complete -> "Downloaded"
+                        DownloadStatus.Downloading -> I18n.t("dl_status_downloading", "Downloading")
+                        DownloadStatus.Queued -> I18n.t("dl_status_waiting", "Waiting")
+                        DownloadStatus.Processing -> I18n.t("dl_status_finishing", "Finishing")
+                        DownloadStatus.Paused -> I18n.t("dl_status_paused", "Paused")
+                        DownloadStatus.Failed -> I18n.t("dl_status_failed", "Failed")
+                        DownloadStatus.Complete -> I18n.t("downloaded", "Downloaded")
                     },
                     color = c.onSurfaceVariant,
                     fontSize = 11.sp,
@@ -450,18 +450,18 @@ private fun DownloadRow(task: DownloadTask, onOpen: (() -> Unit)?) {
 }
 
 private fun statusText(task: DownloadTask): String = when (task.status) {
-    DownloadStatus.Complete -> "Downloaded · ${formatBytes(task.file.length())}"
-    DownloadStatus.Downloading -> "Downloading ${(task.progress * 100).toInt()}%"
-    DownloadStatus.Processing -> "Combining video and audio…"
-    DownloadStatus.Queued -> "Waiting to download"
-    DownloadStatus.Paused -> "Paused · ${formatBytes(task.downloaded)} downloaded"
-    DownloadStatus.Failed -> task.error ?: "Download failed"
+    DownloadStatus.Complete -> "${I18n.t("downloaded", "Downloaded")} · ${formatBytes(task.file.length())}"
+    DownloadStatus.Downloading -> "${I18n.t("dl_status_downloading", "Downloading")} ${(task.progress * 100).toInt()}%"
+    DownloadStatus.Processing -> I18n.t("dl_status_combining", "Combining video and audio…")
+    DownloadStatus.Queued -> I18n.t("dl_status_waiting_long", "Waiting to download")
+    DownloadStatus.Paused -> I18n.t("dl_paused_detail", "Paused · {size} downloaded").replace("{size}", formatBytes(task.downloaded))
+    DownloadStatus.Failed -> task.error ?: I18n.t("dl_failed", "Download failed")
 }
 
 private fun progressText(task: DownloadTask): String {
     val total = task.total
     return if (total > 0) {
-        "${formatBytes(task.downloaded)} of ${formatBytes(total)}"
+        I18n.t("dl_progress_of", "{downloaded} of {total}").replace("{downloaded}", formatBytes(task.downloaded)).replace("{total}", formatBytes(total))
     } else {
         formatBytes(task.downloaded)
     }
@@ -472,7 +472,7 @@ private fun qualityTag(height: Int): String? = when {
     height >= 1440 -> "2K"
     height >= 1080 -> "Full HD"
     height >= 720 -> "HD"
-    height <= 240 -> "Data saver"
+    height <= 240 -> I18n.t("quality_data_saver", "Data saver")
     else -> null
 }
 

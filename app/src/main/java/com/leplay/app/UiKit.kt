@@ -404,7 +404,7 @@ fun VideoCard(video: VideoItem, onClick: () -> Unit, modifier: Modifier = Modifi
             ) {
                 Icon(
                     Icons.Rounded.MoreVert,
-                    contentDescription = "Options",
+                    contentDescription = I18n.t("options", "Options"),
                     tint = c.onSurfaceVariant,
                     modifier = Modifier.size(20.dp),
                 )
@@ -435,9 +435,9 @@ fun VideoRow(video: VideoItem, onClick: () -> Unit, trailing: (@Composable () ->
             Text(video.title, fontWeight = FontWeight.Bold, fontSize = 14.sp, lineHeight = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(4.dp))
             val viewsLabel = if (video.isLive) {
-                video.views.takeIf { it >= 0 }?.let { "${formatCount(it)} watching" } ?: "Live"
+                video.views.takeIf { it >= 0 }?.let { "${formatCount(it)} ${I18n.t("watching", "watching")}" } ?: I18n.t("live_now", "Live")
             } else {
-                video.views.takeIf { it >= 0 }?.let { "${formatCount(it)} views" }
+                video.views.takeIf { it >= 0 }?.let { "${formatCount(it)} ${I18n.t("views", "views")}" }
             }
             Text(
                 listOfNotNull(video.channel.ifBlank { null }, viewsLabel).joinToString(" · "),
@@ -534,6 +534,14 @@ fun formatCount(n: Long): String {
             else -> trimmed(n / 10_000_000.0) + " करोड़"
         }
     }
+    if (lang == "id") {
+        return when {
+            n < 1_000 -> n.toString()
+            n < 1_000_000 -> trimmed(n / 1_000.0) + " rb"
+            n < 1_000_000_000 -> trimmed(n / 1_000_000.0) + " jt"
+            else -> trimmed(n / 1_000_000_000.0) + " M"
+        }
+    }
     return when {
         n < 1_000 -> n.toString()
         n < 1_000_000 -> trimmed(n / 1_000.0) + "K"
@@ -543,11 +551,21 @@ fun formatCount(n: Long): String {
 }
 
 
-fun formatStatCount(n: Long): String = when {
-    n < 1_000 -> n.toString()
-    n < 1_000_000 -> statCompact(n / 1_000.0, "K")
-    n < 1_000_000_000 -> statCompact(n / 1_000_000.0, "M")
-    else -> statCompact(n / 1_000_000_000.0, "B")
+fun formatStatCount(n: Long): String {
+    if (LanguageSettings.effectiveLanguageCode() == "id") {
+        return when {
+            n < 1_000 -> n.toString()
+            n < 1_000_000 -> statCompact(n / 1_000.0, " rb")
+            n < 1_000_000_000 -> statCompact(n / 1_000_000.0, " jt")
+            else -> statCompact(n / 1_000_000_000.0, " M")
+        }
+    }
+    return when {
+        n < 1_000 -> n.toString()
+        n < 1_000_000 -> statCompact(n / 1_000.0, "K")
+        n < 1_000_000_000 -> statCompact(n / 1_000_000.0, "M")
+        else -> statCompact(n / 1_000_000_000.0, "B")
+    }
 }
 
 @Composable
@@ -574,7 +592,7 @@ fun ChannelNameWithBadge(
         )
         if (verified) {
             Spacer(Modifier.width(5.dp))
-            Icon(Icons.Rounded.Verified, "Verified", Modifier.size(badge), tint = c.onSurfaceVariant)
+            Icon(Icons.Rounded.Verified, I18n.t("verified", "Verified"), Modifier.size(badge), tint = c.onSurfaceVariant)
         }
     }
 }
@@ -639,7 +657,7 @@ fun CommunityCard(post: CommunityPost, modifier: Modifier = Modifier) {
         if (post.likes != null) {
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.ThumbUp, contentDescription = "Likes", tint = c.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                Icon(Icons.Rounded.ThumbUp, contentDescription = I18n.t("like", "Likes"), tint = c.onSurfaceVariant, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(post.likes, color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }

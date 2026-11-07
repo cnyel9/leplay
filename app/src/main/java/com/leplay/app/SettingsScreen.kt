@@ -268,7 +268,7 @@ fun SettingsScreen(
                                 val elapsed = System.currentTimeMillis() - start
                                 if (elapsed < 1200) delay(1200 - elapsed)
                                 checkingUpdate = false
-                                updateFeedback = "You're on the latest version (${BuildConfig.VERSION_NAME})"
+                                updateFeedback = I18n.t("latest_version_notice", "You're on the latest version ({version}).").replace("{version}", BuildConfig.VERSION_NAME)
                             }
                         },
                     )
@@ -408,7 +408,7 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        text = "Sign out?",
+                        text = I18n.t("sign_out_question", "Sign out?"),
                         fontFamily = RoundedHeavy,
                         fontWeight = FontWeight.Bold,
                         fontSize = 19.sp,
@@ -416,7 +416,7 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "Are you sure you want to sign out from ${Account.profile?.name ?: "this account"}?",
+                        text = I18n.t("sign_out_confirm_body", "Are you sure you want to sign out from {name}?").replace("{name}", Account.profile?.name ?: I18n.t("this_account", "this account")),
                         fontSize = 13.sp,
                         lineHeight = 18.sp,
                         color = c.onSurfaceVariant,
@@ -436,7 +436,7 @@ fun SettingsScreen(
                                 .padding(vertical = 11.dp),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text("Cancel", fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp, color = c.onSurface)
+                            Text(I18n.t("cancel", "Cancel"), fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp, color = c.onSurface)
                         }
                         Box(
                             modifier = Modifier
@@ -451,7 +451,7 @@ fun SettingsScreen(
                                 .padding(vertical = 11.dp),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text("Sign out", fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp, color = c.onError)
+                            Text(I18n.t("sign_out", "Sign out"), fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp, color = c.onError)
                         }
                     }
                 }
@@ -498,7 +498,7 @@ fun SettingsScreen(
                         )
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            text = "Checking for updates…",
+                            text = I18n.t("checking_updates", "Checking for updates…"),
                             fontFamily = RoundedHeavy,
                             fontWeight = FontWeight.Bold,
                             fontSize = 17.sp,
@@ -506,7 +506,7 @@ fun SettingsScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "Connecting to GitHub releases…",
+                            text = I18n.t("connecting_github_releases", "Connecting to GitHub releases…"),
                             fontSize = 12.sp,
                             color = c.onSurfaceVariant,
                         )
@@ -527,7 +527,7 @@ fun SettingsScreen(
                         }
                         Spacer(Modifier.height(14.dp))
                         Text(
-                            text = "Up to date",
+                            text = I18n.t("up_to_date", "Up to date"),
                             fontFamily = RoundedHeavy,
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
@@ -704,7 +704,7 @@ private fun SettingsFloatingDialog(
                 ) {
                     Icon(
                         Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = I18n.t("back", "Back"),
                         tint = c.onSurface,
                         modifier = Modifier.size(18.dp),
                     )
@@ -735,7 +735,7 @@ private fun SettingsFloatingDialog(
                 ) {
                     Icon(
                         Icons.Rounded.Close,
-                        contentDescription = "Close",
+                        contentDescription = I18n.t("close", "Close"),
                         tint = c.onSurfaceVariant,
                         modifier = Modifier.size(17.dp),
                     )
@@ -872,7 +872,7 @@ private fun AppearanceThemeContent(context: Context) {
                             contentAlignment = Alignment.Center,
                         ) {
                             if (selected) {
-                                Icon(Icons.Rounded.Check, "Selected", tint = scheme.onPrimary, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Rounded.Check, I18n.t("selected", "Selected"), tint = scheme.onPrimary, modifier = Modifier.size(18.dp))
                             }
                         }
                         Spacer(Modifier.height(5.dp))
@@ -1023,7 +1023,7 @@ private fun QualitySelectionDialog(
                             ) {
                                 Icon(
                                     Icons.Rounded.Check,
-                                    contentDescription = "Selected",
+                                    contentDescription = I18n.t("selected", "Selected"),
                                     tint = c.onPrimary,
                                     modifier = Modifier.size(14.dp),
                                 )
@@ -1071,7 +1071,7 @@ private fun QualitySelectionDialog(
                             ) {
                                 Icon(
                                     Icons.Rounded.Check,
-                                    contentDescription = "Selected",
+                                    contentDescription = I18n.t("selected", "Selected"),
                                     tint = c.onPrimary,
                                     modifier = Modifier.size(13.dp),
                                 )
@@ -1124,7 +1124,7 @@ private fun DownloadFolderSelectionDialog(
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Active: $currentPath",
+                    text = I18n.t("active_path", "Active: {path}").replace("{path}", currentPath),
                     fontSize = 11.5.sp,
                     color = c.onSurfaceVariant,
                     maxLines = 2,
@@ -1794,7 +1794,7 @@ private fun LanguageContent(context: Context, onLanguageSelected: () -> Unit) {
         ) {
             Icon(
                 Icons.Rounded.Search,
-                contentDescription = "Search",
+                contentDescription = I18n.t("search", "Search"),
                 tint = c.onSurfaceVariant.copy(alpha = 0.7f),
                 modifier = Modifier.size(18.dp),
             )
@@ -1824,7 +1824,7 @@ private fun LanguageContent(context: Context, onLanguageSelected: () -> Unit) {
             if (searchQuery.isNotEmpty()) {
                 Icon(
                     Icons.Rounded.Close,
-                    contentDescription = "Clear",
+                    contentDescription = I18n.t("clear", "Clear"),
                     tint = c.onSurfaceVariant,
                     modifier = Modifier
                         .size(16.dp)
@@ -1884,7 +1884,7 @@ private fun LanguageContent(context: Context, onLanguageSelected: () -> Unit) {
                         ) {
                             Icon(
                                 Icons.Rounded.Check,
-                                contentDescription = "Selected",
+                                contentDescription = I18n.t("selected", "Selected"),
                                 tint = c.onPrimary,
                                 modifier = Modifier.size(15.dp),
                             )
@@ -1958,15 +1958,15 @@ private fun SettingsProfileCard(
                     val displayName = when {
                         current?.name != null && Account.isCleanAccountName(current.name) -> current.name
                         !current?.handle.isNullOrBlank() -> current!!.handle!!
-                        else -> "YouTube account"
+                        else -> I18n.t("youtube_account", "YouTube account")
                     }
                     val subtitleText = when {
                         current != null -> {
                             val h = current.handle
                             if (!h.isNullOrBlank() && h != displayName) h
-                            else "${accounts.size} account${if (accounts.size == 1) "" else "s"}"
+                            else "${accounts.size} ${if (accounts.size == 1) I18n.t("account_singular", "account") else I18n.t("accounts_count", "accounts")}"
                         }
-                        else -> "Sign in to sync your account"
+                        else -> I18n.t("sign_in_sync_sub", "Sign in to sync your account")
                     }
 
                     Column(Modifier.weight(1f)) {
@@ -1988,7 +1988,7 @@ private fun SettingsProfileCard(
 
             if (profile == null) {
                 Text(
-                    "Sign in",
+                    I18n.t("sign_in", "Sign in"),
                     modifier = Modifier.pressable(onClick = onSignIn).padding(8.dp),
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp,
@@ -1997,7 +1997,7 @@ private fun SettingsProfileCard(
             } else {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.NavigateNext,
-                    contentDescription = if (expanded) "Hide accounts" else "Switch account",
+                    contentDescription = if (expanded) I18n.t("hide_accounts", "Hide accounts") else I18n.t("switch_account", "Switch account"),
                     tint = c.onSurfaceVariant.copy(alpha = 0.5f),
                     modifier = Modifier
                         .padding(4.dp)
@@ -2048,7 +2048,7 @@ private fun SettingsProfileCard(
                         Icon(Icons.Rounded.Add, null, tint = c.primary, modifier = Modifier.size(18.dp))
                     }
                     Spacer(Modifier.width(10.dp))
-                    Text("Add account", fontWeight = FontWeight.Medium, fontSize = 13.sp, color = c.primary)
+                    Text(I18n.t("add_account", "Add account"), fontWeight = FontWeight.Medium, fontSize = 13.sp, color = c.primary)
                 }
 
                 Row(
@@ -2071,7 +2071,7 @@ private fun SettingsProfileCard(
                         )
                     }
                     Spacer(Modifier.width(10.dp))
-                    Text("Sign out", fontWeight = FontWeight.Medium, fontSize = 13.sp, color = c.error)
+                    Text(I18n.t("sign_out", "Sign out"), fontWeight = FontWeight.Medium, fontSize = 13.sp, color = c.error)
                 }
             }
         }
@@ -2122,7 +2122,7 @@ private fun SettingsAccountRow(
             Account.isCleanAccountName(account.name) -> account.name
             !account.email.isNullOrBlank() -> account.email
             !account.handle.isNullOrBlank() && Account.isCleanAccountName(account.handle) -> account.handle
-            else -> "Google Account"
+            else -> I18n.t("google_account", "Google Account")
         }
         val handleText = when {
             account.handle != null && account.handle != displayName && Account.isCleanAccountName(account.handle) -> account.handle
@@ -2149,7 +2149,7 @@ private fun SettingsAccountRow(
                     .background(c.primary),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.Check, "Active account", tint = c.onPrimary, modifier = Modifier.size(13.dp))
+                Icon(Icons.Rounded.Check, I18n.t("active_account", "Active account"), tint = c.onPrimary, modifier = Modifier.size(13.dp))
             }
         } else if (onRemove != null) {
             Box(
@@ -2159,7 +2159,7 @@ private fun SettingsAccountRow(
                     .pressable(onClick = onRemove),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.Close, "Remove account", tint = c.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                Icon(Icons.Rounded.Close, I18n.t("remove_account", "Remove account"), tint = c.onSurfaceVariant, modifier = Modifier.size(14.dp))
             }
         }
     }

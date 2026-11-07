@@ -38,6 +38,17 @@ object SponsorBlock {
             Outro -> "outro"; Preview -> "preview"; MusicOffTopic -> "non-music"; Filler -> "filler"
         }
 
+        val shortLabel: String get() = when (this) {
+            Sponsor -> I18n.t("sb_cat_sponsor", "sponsor")
+            SelfPromo -> I18n.t("sb_cat_selfpromo", "self-promo")
+            Interaction -> I18n.t("sb_cat_interaction", "reminder")
+            Intro -> I18n.t("sb_cat_intro", "intro")
+            Outro -> I18n.t("sb_cat_outro", "outro")
+            Preview -> I18n.t("sb_cat_preview", "preview")
+            MusicOffTopic -> I18n.t("sb_cat_music_offtopic", "non-music")
+            Filler -> I18n.t("sb_cat_filler", "filler")
+        }
+
         val displayLabel: String get() = when (this) {
             Sponsor -> I18n.t("sb_sponsor", "Sponsor")
             SelfPromo -> I18n.t("sb_selfpromo", "Self-promotion")

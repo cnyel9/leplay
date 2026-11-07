@@ -523,7 +523,7 @@ fun ShortsScreen(
                             fontSize = 14.sp,
                         )
                         Spacer(Modifier.height(16.dp))
-                        PillButton("Retry", { feed.load(context) })
+                        PillButton(I18n.t("retry", "Retry"), { feed.load(context) })
                     }
                 }
             }
@@ -727,7 +727,7 @@ fun ShortsScreen(
                         ) {
                             Icon(
                                 Icons.Rounded.PlayArrow,
-                                contentDescription = "Play",
+                                contentDescription = I18n.t("play", "Play"),
                                 tint = Color.White,
                                 modifier = Modifier.size(30.dp),
                             )
@@ -739,7 +739,7 @@ fun ShortsScreen(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(playError.orEmpty(), color = Color.White, fontSize = 14.sp)
                                 Spacer(Modifier.height(12.dp))
-                                PillButton("Retry", {
+                                PillButton(I18n.t("retry", "Retry"), {
                                     info = null
                                     loading = true
                                     playError = null

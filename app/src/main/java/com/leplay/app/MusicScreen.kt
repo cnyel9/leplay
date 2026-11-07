@@ -170,7 +170,7 @@ class MusicFeedState(private val scope: CoroutineScope) {
                     likedTracks = fetchedLiked
                 }
             } catch (t: Throwable) {
-                error = t.message ?: "Failed to load YouTube Music"
+                error = t.message ?: I18n.t("music_load_error", "Failed to load YouTube Music")
             } finally {
                 loading = false
             }
@@ -260,9 +260,9 @@ fun MusicScreen(
     fun downloadAudio(video: VideoItem) {
         val ok = Downloads.enqueueMusic(video)
         if (ok) {
-            Toast.makeText(context, "Downloading audio: ${video.title}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, I18n.t("downloading_audio", "Downloading audio: {title}").replace("{title}", video.title), Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(context, "Already queued or downloaded", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, I18n.t("already_queued_downloaded", "Already queued or downloaded"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -271,7 +271,7 @@ fun MusicScreen(
             track = track,
             onPlayNext = {
                 onPlayNext(track)
-                Toast.makeText(context, "Playing next: ${track.title}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, I18n.t("music_playing_next_toast", "Playing next: {title}").replace("{title}", track.title), Toast.LENGTH_SHORT).show()
             },
             onDownloadAudio = { downloadAudio(track) },
             onShare = {
@@ -279,7 +279,7 @@ fun MusicScreen(
                     type = "text/plain"
                     putExtra(Intent.EXTRA_TEXT, "https://youtu.be/${track.id}")
                 }
-                context.startActivity(Intent.createChooser(shareIntent, "Share track"))
+                context.startActivity(Intent.createChooser(shareIntent, I18n.t("music_share_track", "Share track")))
             },
             onDismiss = { trackOptionsFor = null },
         )
@@ -354,9 +354,9 @@ fun MusicScreen(
                         ) {
                             EmptyState(
                                 icon = Icons.Rounded.MusicNote,
-                                title = "Couldn't load YouTube Music",
-                                body = state.error ?: "Unable to connect to music servers.",
-                                action = { PillButton("Retry", onClick = { state.loadAll(lib) }) },
+                                title = I18n.t("music_load_title", "Couldn't load YouTube Music"),
+                                body = state.error ?: I18n.t("music_connect_error", "Unable to connect to music servers."),
+                                action = { PillButton(I18n.t("retry", "Retry"), onClick = { state.loadAll(lib) }) },
                             )
                         }
                     }
@@ -371,8 +371,8 @@ fun MusicScreen(
                             if (state.recentPlays.isNotEmpty()) {
                                 item(key = "section_recent_plays") {
                                     MusicSectionHeader(
-                                        title = "Listen Again",
-                                        subtitle = if (signedIn) "Your recent YouTube Music listening history" else "Recently played",
+                                        title = I18n.t("music_listen_again", "Listen Again"),
+                                        subtitle = if (signedIn) I18n.t("music_listen_again_sub", "Your recent YouTube Music listening history") else I18n.t("music_recently_played", "Recently played"),
                                         icon = Icons.Rounded.History,
                                     )
                                     LazyRow(
@@ -395,8 +395,8 @@ fun MusicScreen(
                             if (state.likedTracks.isNotEmpty()) {
                                 item(key = "section_liked_music") {
                                     MusicSectionHeader(
-                                        title = "Liked Music",
-                                        subtitle = "Your favorite saved tracks",
+                                        title = I18n.t("music_liked", "Liked Music"),
+                                        subtitle = I18n.t("music_liked_sub", "Your favorite saved tracks"),
                                         icon = Icons.Rounded.Favorite,
                                     )
                                     LazyRow(
@@ -425,7 +425,7 @@ fun MusicScreen(
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     MusicSectionHeader(
                                         title = shelf.title,
-                                        subtitle = shelf.subtitle ?: "Curated for you by YouTube Music",
+                                        subtitle = shelf.subtitle ?: I18n.t("music_curated_sub", "Curated for you by YouTube Music"),
                                         icon = Icons.Rounded.PlayArrow,
                                     )
                                     LazyRow(
@@ -548,7 +548,7 @@ private fun MusicScreenHeader(
         )
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             IconButton(onClick = onSearch) {
-                Icon(Icons.Rounded.Search, contentDescription = "Music Search", tint = c.onSurface)
+                Icon(Icons.Rounded.Search, contentDescription = I18n.t("music_search_cd", "Music Search"), tint = c.onSurface)
             }
             AccountAction(onClick = onAccount)
         }
@@ -678,7 +678,7 @@ fun MusicTrackOptionsSheet(
                 )
                 Spacer(Modifier.width(16.dp))
                 Text(
-                    "Play next",
+                    I18n.t("play_next", "Play next"),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = c.onSurface,
@@ -706,13 +706,13 @@ fun MusicTrackOptionsSheet(
                 Spacer(Modifier.width(16.dp))
                 Column {
                     Text(
-                        "Download (Audio only)",
+                        I18n.t("music_download_audio_only", "Download (Audio only)"),
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = c.onSurface,
                     )
                     Text(
-                        "High quality audio (256 kbps)",
+                        I18n.t("music_high_quality_audio", "High quality audio (256 kbps)"),
                         fontSize = 11.5.sp,
                         color = c.onSurfaceVariant.copy(alpha = 0.7f),
                     )
@@ -739,7 +739,7 @@ fun MusicTrackOptionsSheet(
                 )
                 Spacer(Modifier.width(16.dp))
                 Text(
-                    "Share track",
+                    I18n.t("music_share_track", "Share track"),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = c.onSurface,
@@ -784,7 +784,7 @@ private fun MusicShelfCard(
             ) {
                 Icon(
                     Icons.Rounded.MoreVert,
-                    contentDescription = "Options",
+                    contentDescription = I18n.t("options", "Options"),
                     tint = Color.White,
                     modifier = Modifier.size(18.dp),
                 )
@@ -846,7 +846,7 @@ private fun MusicTrackSquareCard(
             ) {
                 Icon(
                     Icons.Rounded.MoreVert,
-                    contentDescription = "Options",
+                    contentDescription = I18n.t("options", "Options"),
                     tint = Color.White,
                     modifier = Modifier.size(18.dp),
                 )
@@ -911,7 +911,7 @@ private fun DedicatedMusicSearchView(
             IconButton(onClick = onClose) {
                 Icon(
                     Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "Back",
+                    contentDescription = I18n.t("back", "Back"),
                     tint = c.onSurface,
                 )
             }
@@ -950,7 +950,7 @@ private fun DedicatedMusicSearchView(
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                         if (query.isEmpty()) {
                             Text(
-                                "Search songs, artists, albums...",
+                                I18n.t("music_search_hint", "Search songs, artists, albums..."),
                                 fontSize = 14.sp,
                                 color = c.onSurfaceVariant.copy(alpha = 0.6f),
                             )
@@ -984,7 +984,7 @@ private fun DedicatedMusicSearchView(
                         ) {
                             Icon(
                                 Icons.Rounded.Close,
-                                contentDescription = "Clear",
+                                contentDescription = I18n.t("clear", "Clear"),
                                 tint = c.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp),
                             )
@@ -1009,7 +1009,7 @@ private fun DedicatedMusicSearchView(
                 ) {
                     item {
                         Text(
-                            "Top Results",
+                            I18n.t("music_top_results", "Top Results"),
                             fontFamily = RoundedHeavy,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
@@ -1068,7 +1068,7 @@ private fun DedicatedMusicSearchView(
                 ) {
                     item {
                         Text(
-                            "Trending Music Searches",
+                            I18n.t("music_trending_searches", "Trending Music Searches"),
                             fontFamily = RoundedHeavy,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
@@ -1182,7 +1182,7 @@ private fun MusicSearchResultRow(
         ) {
             Icon(
                 Icons.Rounded.Download,
-                contentDescription = "Download Audio",
+                contentDescription = I18n.t("music_download_audio_cd", "Download Audio"),
                 tint = c.onSurfaceVariant.copy(alpha = 0.85f),
                 modifier = Modifier.size(19.dp),
             )
@@ -1193,7 +1193,7 @@ private fun MusicSearchResultRow(
         ) {
             Icon(
                 Icons.Rounded.MoreVert,
-                contentDescription = "Options",
+                contentDescription = I18n.t("options", "Options"),
                 tint = c.onSurfaceVariant.copy(alpha = 0.7f),
                 modifier = Modifier.size(18.dp),
             )
@@ -1283,9 +1283,9 @@ private fun MusicMixScreen(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         when {
-                            loading -> "Loading songs…"
-                            songs.isNotEmpty() -> "${songs.size} songs"
-                            else -> "Mix"
+                            loading -> I18n.t("music_loading_songs", "Loading songs…")
+                            songs.isNotEmpty() -> I18n.t("music_songs_count", "{count} songs").replace("{count}", "${songs.size}")
+                            else -> I18n.t("music_mix", "Mix")
                         },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -1305,14 +1305,14 @@ private fun MusicMixScreen(
                 }
                 error != null -> EmptyState(
                     icon = Icons.Rounded.MusicNote,
-                    title = "Couldn't load this mix",
+                    title = I18n.t("music_mix_error_title", "Couldn't load this mix"),
                     body = error,
-                    action = { PillButton("Retry", onClick = onRetry) },
+                    action = { PillButton(I18n.t("retry", "Retry"), onClick = onRetry) },
                 )
                 songs.isEmpty() -> EmptyState(
                     icon = Icons.Rounded.MusicNote,
-                    title = "No songs here",
-                    body = "This mix didn't return any playable songs.",
+                    title = I18n.t("music_no_songs_title", "No songs here"),
+                    body = I18n.t("music_no_songs_body", "This mix didn't return any playable songs."),
                 )
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -1403,7 +1403,7 @@ private fun MusicMixSongRow(
         IconButton(onClick = onDownload, modifier = Modifier.size(34.dp)) {
             Icon(
                 Icons.Rounded.Download,
-                contentDescription = "Download audio",
+                contentDescription = I18n.t("music_download_audio_cd", "Download audio"),
                 tint = c.onSurfaceVariant.copy(alpha = 0.85f),
                 modifier = Modifier.size(18.dp),
             )
@@ -1411,7 +1411,7 @@ private fun MusicMixSongRow(
         IconButton(onClick = onOptions, modifier = Modifier.size(34.dp)) {
             Icon(
                 Icons.Rounded.MoreVert,
-                contentDescription = "Options",
+                contentDescription = I18n.t("options", "Options"),
                 tint = c.onSurfaceVariant.copy(alpha = 0.7f),
                 modifier = Modifier.size(18.dp),
             )

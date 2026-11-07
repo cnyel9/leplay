@@ -81,12 +81,12 @@ class PlayerState(private val scope: CoroutineScope) {
 
     fun toggleZoomToFill() {
         zoomToFill = !zoomToFill
-        actionMessage = if (zoomToFill) "Zoomed to fill screen" else "Fit to screen"
+        actionMessage = if (zoomToFill) I18n.t("zoomed_to_fill", "Zoomed to fill screen") else I18n.t("fit_to_screen", "Fit to screen")
     }
 
     fun toggleAutoPlay() {
         autoPlayEnabled = !autoPlayEnabled
-        actionMessage = if (autoPlayEnabled) "Autoplay on" else "Autoplay off"
+        actionMessage = if (autoPlayEnabled) I18n.t("autoplay_on", "Autoplay on") else I18n.t("autoplay_off", "Autoplay off")
     }
 
     fun toggleShuffle() {
@@ -94,7 +94,7 @@ class PlayerState(private val scope: CoroutineScope) {
         val next = !player.shuffleModeEnabled
         player.shuffleModeEnabled = next
         shuffleEnabled = next
-        actionMessage = if (shuffleEnabled) "Shuffle on" else "Shuffle off"
+        actionMessage = if (shuffleEnabled) I18n.t("shuffle_on", "Shuffle on") else I18n.t("shuffle_off", "Shuffle off")
     }
 
     fun skipNext() {
@@ -124,7 +124,7 @@ class PlayerState(private val scope: CoroutineScope) {
         val next = if (player.repeatMode == Player.REPEAT_MODE_ONE) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ONE
         player.repeatMode = next
         loopEnabled = next == Player.REPEAT_MODE_ONE
-        actionMessage = if (loopEnabled) "Loop on" else "Loop off"
+        actionMessage = if (loopEnabled) I18n.t("loop_on", "Loop on") else I18n.t("loop_off", "Loop off")
     }
     var speedPanelOpen by mutableStateOf(false)
 
@@ -269,7 +269,7 @@ class PlayerState(private val scope: CoroutineScope) {
         known[item.id] = item
         if (current == null || player.mediaItemCount == 0) { openMusic(item, expand = false); return }
         player.addMediaItem(player.currentMediaItemIndex + 1, mediaItemFor(item))
-        actionMessage = "Playing next"
+        actionMessage = I18n.t("playing_next", "Playing next")
         continueIfEnded(player)
     }
 
@@ -346,7 +346,7 @@ class PlayerState(private val scope: CoroutineScope) {
                     comments.load(item.id)
                     known[item.id] = d.item
                     d.related.forEach { known[it.id] = it }
-                    if (!d.playable) error = "No playable stream was found for this video."
+                    if (!d.playable) error = I18n.t("no_playable_stream", "No playable stream was found for this video.")
                     else if (startPlayback) startPlayback(d.item)
 
                     scope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -432,7 +432,7 @@ class PlayerState(private val scope: CoroutineScope) {
         known[item.id] = item
         if (current == null || player.mediaItemCount == 0) { open(item, expand = false); return }
         player.addMediaItem(player.currentMediaItemIndex + 1, mediaItemFor(item))
-        actionMessage = "Playing next"
+        actionMessage = I18n.t("playing_next", "Playing next")
         continueIfEnded(player)
     }
 
@@ -449,7 +449,7 @@ class PlayerState(private val scope: CoroutineScope) {
         known[item.id] = item
         if (current == null || player.mediaItemCount == 0) { open(item, expand = false); return }
         player.addMediaItem(mediaItemFor(item))
-        actionMessage = "Added to queue"
+        actionMessage = I18n.t("added_to_queue", "Added to queue")
         continueIfEnded(player)
     }
 
@@ -505,7 +505,7 @@ class PlayerState(private val scope: CoroutineScope) {
             relList.firstOrNull { it.channel.equals(curr.channel, ignoreCase = true) } ?: relList.firstOrNull()
         }
         if (next != null) {
-            actionMessage = "Up next: ${next.title}"
+            actionMessage = I18n.t("up_next", "Up next: {title}").replace("{title}", next.title)
             if (isMusicMode) openMusic(next, expand = expanded) else open(next, expand = expanded)
         } else {
             scope.launch {
@@ -518,7 +518,7 @@ class PlayerState(private val scope: CoroutineScope) {
                             list.firstOrNull { it.channel.equals(curr.channel, ignoreCase = true) } ?: list.firstOrNull()
                         }
                         if (rel != null) {
-                            actionMessage = "Up next: ${rel.title}"
+                            actionMessage = I18n.t("up_next", "Up next: {title}").replace("{title}", rel.title)
                             if (isMusicMode) openMusic(rel, expand = expanded) else open(rel, expand = expanded)
                         }
                     }
@@ -603,9 +603,9 @@ class PlayerState(private val scope: CoroutineScope) {
         likeDeltas = likeDeltas + (id to ((likeDeltas[id] ?: 0L) + likeWeight(next) - likeWeight(before)))
         dislikeDeltas = dislikeDeltas + (id to ((dislikeDeltas[id] ?: 0L) + dislikeWeight(next) - dislikeWeight(before)))
         actionMessage = when (next) {
-            LikeStatus.Like -> "Liked"
-            LikeStatus.Dislike -> "Not for me"
-            LikeStatus.None -> "Rating removed"
+            LikeStatus.Like -> I18n.t("liked", "Liked")
+            LikeStatus.Dislike -> I18n.t("not_for_me", "Not for me")
+            LikeStatus.None -> I18n.t("rating_removed", "Rating removed")
         }
 
         if (!Account.signedIn) return
@@ -619,7 +619,7 @@ class PlayerState(private val scope: CoroutineScope) {
                         likeDeltas = likeDeltas + (id to ((likeDeltas[id] ?: 0L) - likeWeight(next) + likeWeight(before)))
                         dislikeDeltas = dislikeDeltas + (id to ((dislikeDeltas[id] ?: 0L) - dislikeWeight(next) + dislikeWeight(before)))
                         accountState = previousAccount
-                        actionMessage = "Couldn't update your like."
+                        actionMessage = I18n.t("like_update_failed", "Couldn't update your like.")
                     }
                 }
         }
@@ -638,7 +638,7 @@ class PlayerState(private val scope: CoroutineScope) {
         accountState = before.copy(subscribed = subscribe, channelId = channelId)
         scope.launch {
             runCatching { InnerTube.setSubscribed(channelId, subscribe) }
-                .onFailure { accountState = before; actionMessage = "Couldn't update your subscription." }
+                .onFailure { accountState = before; actionMessage = I18n.t("subscription_update_failed", "Couldn't update your subscription.") }
         }
     }
 
@@ -648,8 +648,8 @@ class PlayerState(private val scope: CoroutineScope) {
         inWatchLater = add
         scope.launch {
             runCatching { InnerTube.setInWatchLater(id, add) }
-                .onSuccess { actionMessage = if (add) "Saved to Watch later" else "Removed from Watch later" }
-                .onFailure { inWatchLater = !add; actionMessage = "Couldn't update Watch later."; Log.w(TAG, "watch later $id", it) }
+                .onSuccess { actionMessage = if (add) I18n.t("saved_to_watch_later", "Saved to Watch later") else I18n.t("removed_from_watch_later", "Removed from Watch later") }
+                .onFailure { inWatchLater = !add; actionMessage = I18n.t("watch_later_update_failed", "Couldn't update Watch later."); Log.w(TAG, "watch later $id", it) }
         }
     }
 
@@ -659,9 +659,9 @@ class PlayerState(private val scope: CoroutineScope) {
             runCatching { InnerTube.setInWatchLater(video.id, true) }
                 .onSuccess {
                     if (current?.id == video.id) inWatchLater = true
-                    actionMessage = "Saved to Watch later"
+                    actionMessage = I18n.t("saved_to_watch_later", "Saved to Watch later")
                 }
-                .onFailure { actionMessage = "Couldn't save to Watch later."; Log.w(TAG, "watch later ${video.id}", it) }
+                .onFailure { actionMessage = I18n.t("watch_later_save_failed", "Couldn't save to Watch later."); Log.w(TAG, "watch later ${video.id}", it) }
         }
     }
 
@@ -679,7 +679,7 @@ class PlayerState(private val scope: CoroutineScope) {
         // an HDR row falls back to a lower SDR height, leaving the player with no
         // video track at all.
         if (item.isLive) {
-            details = details?.copy(quality = height?.let { "${it}p" } ?: "Live")
+            details = details?.copy(quality = height?.let { "${it}p" } ?: I18n.t("live", "Live"))
             return
         }
 
@@ -727,14 +727,14 @@ class PlayerState(private val scope: CoroutineScope) {
      * preference when it builds the next media source.
      */
     fun setAudioTrack(option: AudioTrackOption?) {
-        AudioTrackPreference.set(if (option == null || option.isOriginal) null else option.key, option?.label ?: "Original")
+        AudioTrackPreference.set(if (option == null || option.isOriginal) null else option.key, option?.label ?: I18n.t("original", "Original"))
         val player = controller ?: return
         val item = details?.item ?: current ?: return
         val position = player.currentPosition
         val playWhenReady = player.playWhenReady
         replaceCurrent(player, item, position)
         player.playWhenReady = playWhenReady
-        actionMessage = "Audio: ${option?.label ?: "Original"}"
+        actionMessage = I18n.t("audio_track_message", "Audio: {label}").replace("{label}", option?.label ?: I18n.t("original", "Original"))
     }
 
     var selectedSubtitleLanguage by mutableStateOf<String?>(null)
@@ -755,7 +755,7 @@ class PlayerState(private val scope: CoroutineScope) {
                     ?.build() ?: return
                 activeCues = emptyList()
                 captionText = null
-                actionMessage = "Captions off"
+                actionMessage = I18n.t("captions_off", "Captions off")
                 return
             } else {
                 p?.trackSelectionParameters = p?.trackSelectionParameters
@@ -763,7 +763,7 @@ class PlayerState(private val scope: CoroutineScope) {
                     ?.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                     ?.setPreferredTextLanguage(code)
                     ?.build() ?: return
-                actionMessage = "Captions on"
+                actionMessage = I18n.t("captions_on", "Captions on")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error setting subtitle language", e)
@@ -1059,9 +1059,9 @@ class PlayerState(private val scope: CoroutineScope) {
             if (e.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS && StreamRecovery.recovering == current?.id) return
             error = when (e.errorCode) {
                 PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "Lost the connection. Check your network and try again."
-                PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> "YouTube refused the stream. Try again."
-                else -> "This video couldn't be played."
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> I18n.t("error_no_connection", "Lost the connection. Check your network and try again.")
+                PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> I18n.t("error_stream_refused", "YouTube refused the stream. Try again.")
+                else -> I18n.t("error_unplayable", "This video couldn't be played.")
             }
         }
     }
@@ -1097,7 +1097,7 @@ class PlayerState(private val scope: CoroutineScope) {
                 format.codecs?.startsWith("av01") == true -> "AV1"
                 else -> format.codecs ?: format.sampleMimeType ?: "?"
             }
-            val auto = if (formats.size > 1) "Auto" else null
+            val auto = if (formats.size > 1) I18n.t("auto", "Auto") else null
             val labelTier = qualityTier(format.width, format.height)
             val codecText = format.codecs?.lowercase(java.util.Locale.US).orEmpty()
             val hdr = format.colorInfo?.let {

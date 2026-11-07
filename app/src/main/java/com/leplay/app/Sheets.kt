@@ -80,13 +80,13 @@ fun VideoOptionsSheet(video: VideoItem, player: PlayerState, onDismiss: () -> Un
                 Text(video.channel, color = c.onSurfaceVariant, fontSize = 13.sp, maxLines = 1)
             }
         }
-        OptionRow(Icons.AutoMirrored.Rounded.PlaylistPlay, "Play next") { player.playNext(video); onDismiss() }
-        OptionRow(Icons.AutoMirrored.Rounded.PlaylistAdd, "Add to queue") { player.addToQueue(video); onDismiss() }
-        OptionRow(Icons.Rounded.Download, "Download") { player.downloadFor = video; onDismiss() }
+        OptionRow(Icons.AutoMirrored.Rounded.PlaylistPlay, I18n.t("play_next", "Play next")) { player.playNext(video); onDismiss() }
+        OptionRow(Icons.AutoMirrored.Rounded.PlaylistAdd, I18n.t("add_to_queue", "Add to queue")) { player.addToQueue(video); onDismiss() }
+        OptionRow(Icons.Rounded.Download, I18n.t("download", "Download")) { player.downloadFor = video; onDismiss() }
         if (Account.signedIn) {
-            OptionRow(Icons.Rounded.WatchLater, "Save to Watch later") { player.saveToWatchLater(video); onDismiss() }
+            OptionRow(Icons.Rounded.WatchLater, I18n.t("save_to_watch_later", "Save to Watch later")) { player.saveToWatchLater(video); onDismiss() }
         }
-        OptionRow(Icons.Rounded.Share, "Share") {
+        OptionRow(Icons.Rounded.Share, I18n.t("share", "Share")) {
             val send = Intent(Intent.ACTION_SEND).setType("text/plain")
                 .putExtra(Intent.EXTRA_TEXT, "https://youtu.be/${video.id}")
                 .putExtra(Intent.EXTRA_SUBJECT, video.title)
@@ -131,7 +131,7 @@ fun QueueCard(player: PlayerState, onOpen: () -> Unit) {
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                "Queue · ${player.queue.size}",
+                "${I18n.t("queue", "Queue")} · ${player.queue.size}",
                 color = c.onSecondaryContainer, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp,
             )
             Text(next.title, color = c.onSecondaryContainer, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -146,17 +146,17 @@ fun QueueSheet(player: PlayerState, onDismiss: () -> Unit) {
     val c = MaterialTheme.colorScheme
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = c.surfaceContainerLow) {
         Row(Modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Queue", fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 21.sp, modifier = Modifier.weight(1f))
+            Text(I18n.t("queue", "Queue"), fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 21.sp, modifier = Modifier.weight(1f))
             if (player.queue.isNotEmpty()) {
                 Text(
-                    "Clear", color = c.primary, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp,
+                    I18n.t("clear", "Clear"), color = c.primary, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp,
                     modifier = Modifier.pressable { player.clearQueue() }.padding(8.dp),
                 )
             }
         }
         if (player.queue.isEmpty()) {
             Text(
-                "Nothing queued. Press and hold a video to add it.",
+                I18n.t("queue_empty", "Nothing queued. Press and hold a video to add it."),
                 color = c.onSurfaceVariant, fontSize = 14.sp,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
             )
@@ -166,7 +166,7 @@ fun QueueSheet(player: PlayerState, onDismiss: () -> Unit) {
                     Box(Modifier.padding(horizontal = 20.dp)) {
                         VideoRow(video, onClick = { player.playFromQueue(index); onDismiss() }) {
                             Box(Modifier.size(40.dp).pressable { player.removeFromQueue(index) }, contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.Close, "Remove from queue", tint = c.onSurfaceVariant)
+                                Icon(Icons.Rounded.Close, I18n.t("remove_from_queue", "Remove from queue"), tint = c.onSurfaceVariant)
                             }
                         }
                     }
@@ -185,8 +185,8 @@ fun SponsorBlockSettings() {
     Column(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("SponsorBlock", fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
-                Text("Skip sponsor reads and other segments", color = c.onSurfaceVariant, fontSize = 13.sp)
+                Text(I18n.t("sponsorblock", "SponsorBlock"), fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                Text(I18n.t("sponsorblock_sheet_sub", "Skip sponsor reads and other segments"), color = c.onSurfaceVariant, fontSize = 13.sp)
             }
             Switch(
                 checked = SponsorBlock.enabled,
@@ -200,7 +200,7 @@ fun SponsorBlockSettings() {
         }
         Spacer(Modifier.height(10.dp))
         Text(
-            "Segments from SponsorBlock (sponsor.ajay.app), a community project. Data licensed CC BY-NC-SA 4.0.",
+            I18n.t("sponsorblock_data_note", "Segments from SponsorBlock (sponsor.ajay.app), a community project. Data licensed CC BY-NC-SA 4.0."),
             color = c.onSurfaceVariant, fontSize = 11.5.sp, lineHeight = 16.sp,
         )
     }
@@ -214,7 +214,7 @@ private fun CategoryRow(category: SponsorBlock.Category) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(10.dp).clip(CircleShape).background(category.color))
             Spacer(Modifier.width(8.dp))
-            Text(category.label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(category.displayLabel, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
         }
         Spacer(Modifier.height(6.dp))
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -227,7 +227,7 @@ private fun CategoryRow(category: SponsorBlock.Category) {
                         .background(if (on) c.secondaryContainer else c.surfaceContainerHighest)
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                 ) {
-                    Text(action.label, color = if (on) c.onSecondaryContainer else c.onSurfaceVariant, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text(action.displayLabel, color = if (on) c.onSecondaryContainer else c.onSurfaceVariant, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
         }
@@ -243,10 +243,10 @@ fun AppearanceSettings() {
     val context = LocalContext.current
     val dark = isDarkTheme()
     Column(Modifier.fillMaxWidth()) {
-        Text("Appearance", fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+        Text(I18n.t("appearance", "Appearance"), fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("system" to "System", "light" to "Light", "dark" to "Dark", "amoled" to "AMOLED").forEach { (key, label) ->
+            listOf("system" to I18n.t("theme_system", "System"), "light" to I18n.t("theme_light", "Light"), "dark" to I18n.t("theme_dark", "Dark"), "amoled" to I18n.t("theme_amoled", "AMOLED")).forEach { (key, label) ->
                 val on = ThemeSettings.mode == key
                 Box(
                     Modifier
@@ -259,7 +259,7 @@ fun AppearanceSettings() {
         }
         Spacer(Modifier.height(14.dp))
         val choices = buildList {
-            if (ThemeSettings.wallpaperAvailable) add(null to "Wallpaper")
+            if (ThemeSettings.wallpaperAvailable) add(null to I18n.t("wallpaper_accent", "Wallpaper"))
             LEPLAY_THEMES.forEach { add(it.hex to it.name) }
         }
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -285,7 +285,7 @@ fun AppearanceSettings() {
                             ),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (selected) Icon(Icons.Rounded.Check, "Selected", tint = scheme.onPrimary, modifier = Modifier.size(22.dp))
+                        if (selected) Icon(Icons.Rounded.Check, I18n.t("selected", "Selected"), tint = scheme.onPrimary, modifier = Modifier.size(22.dp))
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(
@@ -328,7 +328,7 @@ fun SubtitlesSheet(
             streamTracks.map { sub ->
                 val code = sub.languageTag?.ifBlank { "en" } ?: "en"
                 val name = sub.displayLanguageName?.ifBlank { code } ?: code
-                val label = if (sub.isAutoGenerated) "$name (auto-generated)" else name
+                val label = if (sub.isAutoGenerated) I18n.t("auto_generated_suffix", "{name} (auto-generated)").replace("{name}", name) else name
                 SubtitleOption(code = code, label = label, url = sub.content)
             }
         } else {
@@ -350,7 +350,7 @@ fun SubtitlesSheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 28.dp),
         ) {
-            Text("Captions / Subtitles", fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+            Text(I18n.t("captions_subtitles", "Captions / Subtitles"), fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
             Spacer(Modifier.height(14.dp))
 
             // Option 1: Off (Turn off captions)
@@ -369,9 +369,9 @@ fun SubtitlesSheet(
             ) {
                 Icon(Icons.Rounded.SubtitlesOff, contentDescription = null, tint = c.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(12.dp))
-                Text("Off", fontWeight = FontWeight.SemiBold, fontSize = 14.5.sp, color = c.onSurface, modifier = Modifier.weight(1f))
+                Text(I18n.t("off", "Off"), fontWeight = FontWeight.SemiBold, fontSize = 14.5.sp, color = c.onSurface, modifier = Modifier.weight(1f))
                 if (isOff) {
-                    Icon(Icons.Rounded.Check, contentDescription = "Selected", tint = c.primary, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.Check, contentDescription = I18n.t("selected", "Selected"), tint = c.primary, modifier = Modifier.size(18.dp))
                 }
             }
 
@@ -381,7 +381,7 @@ fun SubtitlesSheet(
 
             if (subtitleTracks.isEmpty()) {
                 Text(
-                    "No captions available for this video.",
+                    I18n.t("no_captions", "No captions available for this video."),
                     color = c.onSurfaceVariant,
                     fontSize = 13.5.sp,
                     modifier = Modifier.padding(vertical = 12.dp),
@@ -417,7 +417,7 @@ fun SubtitlesSheet(
                             Spacer(Modifier.width(12.dp))
                             Text(track.label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = c.onSurface, modifier = Modifier.weight(1f))
                             if (selected) {
-                                Icon(Icons.Rounded.Check, contentDescription = "Selected", tint = c.primary, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Rounded.Check, contentDescription = I18n.t("selected", "Selected"), tint = c.primary, modifier = Modifier.size(18.dp))
                             }
                         }
                     }

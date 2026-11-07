@@ -28,6 +28,7 @@ import coil.request.SuccessResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -369,7 +370,7 @@ fun PlayerScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = bottom + 32.dp),
                     ) {
-                        item(key = "wideMoreTitle") { SectionTitle("More videos") }
+                        item(key = "wideMoreTitle") { SectionTitle(I18n.t("more_videos", "More videos")) }
                         val related = details?.related.orEmpty()
                         if (related.isNotEmpty()) {
                             items(related, key = { "wide-rel-" + it.id }) { video ->
@@ -418,7 +419,7 @@ fun PlayerScreen(
                 item(key = "info") { VideoDetailsBlock(state, item, details, c, descriptionOpen, { descriptionOpen = !descriptionOpen }, isLiveStream, replay = hasChatReplay, onHeaderBottom = { detailsHeaderBottom = it }) }
                 val related = details?.related.orEmpty()
                 if (related.isNotEmpty()) {
-                    item(key = "moreTitle") { SectionTitle("More videos") }
+                    item(key = "moreTitle") { SectionTitle(I18n.t("more_videos", "More videos")) }
                     items(related, key = { "rel-" + it.id }) { video ->
                         Box(Modifier.padding(horizontal = 20.dp)) { VideoRow(video, onClick = { onOpen(video) }) }
                     }
@@ -646,18 +647,18 @@ private fun PlayerActions(state: PlayerState) {
                 active = item.localUri != null,
                 flourish = Flourish.Pop,
                 shape = RoundedCornerShape(18.dp),
-                description = "Download video",
+                description = I18n.t("download_video", "Download video"),
             ) {
                 if (item.localUri != null) {
-                    state.actionMessage = "Playing from your downloads"
+                    state.actionMessage = I18n.t("playing_from_downloads", "Playing from your downloads")
                 } else if (state.isMusicMode) {
 
 
                     val queued = Downloads.enqueueMusic(item)
                     state.actionMessage = if (queued) {
-                        "Downloading audio: ${item.title}"
+                        I18n.t("downloading_audio", "Downloading audio: {title}").replace("{title}", item.title)
                     } else {
-                        "Already queued or downloaded"
+                        I18n.t("already_queued_downloaded", "Already queued or downloaded")
                     }
                 } else {
                     state.downloadFor = item
@@ -669,7 +670,7 @@ private fun PlayerActions(state: PlayerState) {
                 active = false,
                 flourish = Flourish.Pop,
                 shape = RoundedCornerShape(18.dp),
-                description = "Share video",
+                description = I18n.t("share_video", "Share video"),
             ) {
                 val url = "https://youtu.be/${item.id}"
                 val intent = Intent(Intent.ACTION_SEND).apply {
@@ -708,7 +709,7 @@ private fun AccountActions(state: PlayerState) {
             flourish = Flourish.Pop,
             labelRollsUp = rising,
             shape = RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp, topEnd = 6.dp, bottomEnd = 6.dp),
-            description = "Like",
+            description = I18n.t("like", "Like"),
         ) {
             state.toggleLike()
         }
@@ -718,7 +719,7 @@ private fun AccountActions(state: PlayerState) {
             active = like == LikeStatus.Dislike,
             flourish = Flourish.Droop,
             shape = RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp, topEnd = 18.dp, bottomEnd = 18.dp),
-            description = "Dislike",
+            description = I18n.t("dislike", "Dislike"),
         ) {
             state.toggleDislike()
         }
@@ -729,10 +730,10 @@ private fun AccountActions(state: PlayerState) {
         active = state.inWatchLater,
         flourish = Flourish.Drop,
         shape = RoundedCornerShape(18.dp),
-        description = "Save to Watch later",
+        description = I18n.t("save_to_watch_later", "Save to Watch later"),
     ) {
         if (signedIn) state.toggleWatchLater()
-        else state.actionMessage = "Sign in to save videos"
+        else state.actionMessage = I18n.t("sign_in_to_save", "Sign in to save videos")
     }
 }
 
@@ -976,7 +977,7 @@ fun MiniPlayer(
                     } else {
                         Icon(
                             imageVector = if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = if (state.isPlaying) "Pause" else "Play",
+                            contentDescription = if (state.isPlaying) I18n.t("pause", "Pause") else I18n.t("play", "Play"),
                             tint = Color.White,
                             modifier = Modifier.size(16.dp),
                         )
@@ -998,7 +999,7 @@ fun MiniPlayer(
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
-                        contentDescription = "Close player",
+                        contentDescription = I18n.t("close_player", "Close player"),
                         tint = Color.White,
                         modifier = Modifier.size(16.dp),
                     )
@@ -1078,7 +1079,7 @@ private fun RowScope.MiniDetails(state: PlayerState, interactive: Boolean) {
                 } else {
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        contentDescription = if (state.isPlaying) "Pause" else "Play",
+                        contentDescription = if (state.isPlaying) I18n.t("pause", "Pause") else I18n.t("play", "Play"),
                         tint = c.onSurface,
                         modifier = Modifier.size(26.dp)
                     )
@@ -1094,7 +1095,7 @@ private fun RowScope.MiniDetails(state: PlayerState, interactive: Boolean) {
             ) {
                 Icon(
                     Icons.Rounded.Close,
-                    "Close",
+                    I18n.t("close", "Close"),
                     tint = c.onSurfaceVariant,
                     modifier = Modifier.size(21.dp)
                 )
@@ -1246,7 +1247,7 @@ fun BitChordMusicPlayer(
                 IconButton(onClick = onCollapse) {
                     Icon(
                         Icons.Rounded.KeyboardArrowDown,
-                        contentDescription = "Collapse",
+                        contentDescription = I18n.t("collapse", "Collapse"),
                         tint = c.onSurface,
                         modifier = Modifier.size(32.dp),
                     )
@@ -1263,7 +1264,7 @@ fun BitChordMusicPlayer(
                         color = c.onSurfaceVariant.copy(alpha = 0.85f),
                     )
                     Text(
-                        "Now Playing",
+                        I18n.t("now_playing", "Now Playing"),
                         fontSize = 13.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = c.onSurface,
@@ -1272,7 +1273,7 @@ fun BitChordMusicPlayer(
                 IconButton(onClick = { showTrackMenu = true }) {
                     Icon(
                         Icons.Rounded.MoreVert,
-                        contentDescription = "Options",
+                        contentDescription = I18n.t("options", "Options"),
                         tint = c.onSurface,
                         modifier = Modifier.size(24.dp),
                     )
@@ -1365,7 +1366,7 @@ fun BitChordMusicPlayer(
                 IconButton(onClick = state::toggleLike) {
                     Icon(
                         if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        contentDescription = "Like",
+                        contentDescription = I18n.t("like", "Like"),
                         tint = if (liked) Color(0xFFFF2D55) else c.onSurfaceVariant,
                         modifier = Modifier.size(28.dp),
                     )
@@ -1433,7 +1434,7 @@ fun BitChordMusicPlayer(
                 ) {
                     Icon(
                         Icons.Rounded.Shuffle,
-                        contentDescription = "Shuffle",
+                        contentDescription = I18n.t("shuffle", "Shuffle"),
                         tint = if (state.shuffleEnabled) c.primary else c.onSurfaceVariant.copy(alpha = 0.7f),
                         modifier = Modifier.size(24.dp),
                     )
@@ -1446,7 +1447,7 @@ fun BitChordMusicPlayer(
                 ) {
                     Icon(
                         Icons.Rounded.SkipPrevious,
-                        contentDescription = "Previous",
+                        contentDescription = I18n.t("previous", "Previous"),
                         tint = c.onSurface,
                         modifier = Modifier.size(36.dp),
                     )
@@ -1470,7 +1471,7 @@ fun BitChordMusicPlayer(
                     } else {
                         Icon(
                             if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = if (state.isPlaying) "Pause" else "Play",
+                            contentDescription = if (state.isPlaying) I18n.t("pause", "Pause") else I18n.t("play", "Play"),
                             tint = c.surface,
                             modifier = Modifier.size(40.dp),
                         )
@@ -1484,7 +1485,7 @@ fun BitChordMusicPlayer(
                 ) {
                     Icon(
                         Icons.Rounded.SkipNext,
-                        contentDescription = "Next",
+                        contentDescription = I18n.t("next", "Next"),
                         tint = c.onSurface,
                         modifier = Modifier.size(36.dp),
                     )
@@ -1497,7 +1498,7 @@ fun BitChordMusicPlayer(
                 ) {
                     Icon(
                         if (state.loopEnabled) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
-                        contentDescription = "Repeat",
+                        contentDescription = I18n.t("repeat", "Repeat"),
                         tint = if (state.loopEnabled) c.primary else c.onSurfaceVariant.copy(alpha = 0.7f),
                         modifier = Modifier.size(24.dp),
                     )
@@ -1523,7 +1524,7 @@ fun BitChordMusicPlayer(
                             .padding(horizontal = 10.dp, vertical = 5.dp),
                     ) {
                         Text(
-                            "HQ AUDIO · 256 KBPS AAC",
+                            I18n.t("hq_audio_badge", "HQ AUDIO") + " · 256 KBPS AAC",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.8.sp,
@@ -1538,7 +1539,7 @@ fun BitChordMusicPlayer(
                     ) {
                         Icon(
                             Icons.Rounded.Lyrics,
-                            contentDescription = "Lyrics",
+                            contentDescription = I18n.t("lyrics", "Lyrics"),
                             tint = if (showLyrics) c.primary else c.onSurfaceVariant.copy(alpha = 0.7f),
                             modifier = Modifier.size(22.dp),
                         )
@@ -1556,7 +1557,7 @@ fun BitChordMusicPlayer(
                 val queued = Downloads.enqueueMusic(item)
                 Toast.makeText(
                     context,
-                    if (queued) "Downloading audio: ${item.title}" else "Already queued or downloaded",
+                    if (queued) I18n.t("downloading_audio", "Downloading audio: {title}").replace("{title}", item.title) else I18n.t("already_queued_downloaded", "Already queued or downloaded"),
                     Toast.LENGTH_SHORT,
                 ).show()
             },
@@ -1617,7 +1618,7 @@ private fun MusicLyricsPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "LYRICS",
+                    I18n.t("lyrics", "Lyrics"),
                     fontSize = 11.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = c.primary,
@@ -1637,7 +1638,7 @@ private fun MusicLyricsPanel(
                 ) {
                     Icon(
                         Icons.Rounded.Translate,
-                        contentDescription = "Show lyrics in English letters",
+                        contentDescription = I18n.t("lyrics_latin_toggle", "Show lyrics in English letters"),
                         tint = if (englishScript) c.primary else c.onSurfaceVariant,
                         modifier = Modifier.size(15.dp),
                     )
@@ -1656,7 +1657,7 @@ private fun MusicLyricsPanel(
                 ) {
                     Icon(
                         Icons.Rounded.Close,
-                        contentDescription = "Close lyrics",
+                        contentDescription = I18n.t("close_lyrics", "Close lyrics"),
                         tint = c.onSurfaceVariant,
                         modifier = Modifier.size(18.dp),
                     )
@@ -1673,7 +1674,7 @@ private fun MusicLyricsPanel(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        "No lyrics available for this song.",
+                        I18n.t("no_lyrics", "No lyrics available for this song."),
                         color = c.onSurfaceVariant,
                         fontSize = 14.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -1890,7 +1891,7 @@ private fun androidx.compose.foundation.layout.BoxScope.BitChordMiniDetails(
             } else {
                 Icon(
                     imageVector = if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = if (state.isPlaying) "Pause" else "Play",
+                    contentDescription = if (state.isPlaying) I18n.t("pause", "Pause") else I18n.t("play", "Play"),
                     tint = c.onSurface,
                     modifier = Modifier.size(24.dp),
                 )
@@ -1906,7 +1907,7 @@ private fun androidx.compose.foundation.layout.BoxScope.BitChordMiniDetails(
         ) {
             Icon(
                 Icons.Rounded.SkipNext,
-                contentDescription = "Next",
+                contentDescription = I18n.t("next", "Next"),
                 tint = c.onSurface,
                 modifier = Modifier.size(24.dp),
             )
@@ -1921,7 +1922,7 @@ private fun androidx.compose.foundation.layout.BoxScope.BitChordMiniDetails(
         ) {
             Icon(
                 Icons.Rounded.Close,
-                contentDescription = "Close",
+                contentDescription = I18n.t("close", "Close"),
                 tint = c.onSurfaceVariant,
                 modifier = Modifier.size(20.dp),
             )
@@ -1965,9 +1966,9 @@ private fun VideoDetailsBlock(
         )
         Spacer(Modifier.height(6.dp))
         val stats = listOfNotNull(
-            item.views.takeIf { it >= 0 }?.let { "${formatCount(it)} views" },
+            item.views.takeIf { it >= 0 }?.let { "${formatCount(it)} ${I18n.t("views", "views")}" },
             item.uploaded?.ifBlank { null },
-            details?.likes?.takeIf { it > 0 }?.let { "${formatCount(it)} likes" },
+            details?.likes?.takeIf { it > 0 }?.let { "${formatCount(it)} ${I18n.t("likes", "likes")}" },
         ).joinToString(" · ")
         val hasDescription = !details?.description.isNullOrBlank()
         Row(
@@ -1976,7 +1977,7 @@ private fun VideoDetailsBlock(
             Text(stats, color = c.onSurfaceVariant, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             if (hasDescription) {
                 Text(
-                    if (descriptionOpen) "  less" else "  …more",
+                    if (descriptionOpen) I18n.t("show_less", "  less") else I18n.t("show_more", "  …more"),
                     color = c.onSurface,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -1984,14 +1985,16 @@ private fun VideoDetailsBlock(
             }
         }
         if (descriptionOpen && details != null) {
-            Text(
-                details.description,
-                modifier = Modifier.padding(top = 10.dp),
-                color = c.onSurfaceVariant,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                fontWeight = FontWeight.Medium,
-            )
+            SelectionContainer {
+                Text(
+                    details.description,
+                    modifier = Modifier.padding(top = 10.dp),
+                    color = c.onSurfaceVariant,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
         }
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2007,7 +2010,7 @@ private fun VideoDetailsBlock(
                 Column(Modifier.weight(1f)) {
                     Text(item.channel, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     details?.subscribers?.takeIf { it > 0 }?.let {
-                        Text("${formatCount(it)} subscribers", color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("${formatCount(it)} ${I18n.t("subscribers", "subscribers")}", color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

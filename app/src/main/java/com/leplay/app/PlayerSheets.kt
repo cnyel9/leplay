@@ -69,7 +69,7 @@ fun SpeedSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () -> Unit) {
         state.commitSpeed(value)
     }
 
-    PlayerGlassSheet("Playback speed", backdrop, onDismiss) {
+    PlayerGlassSheet(I18n.t("playback_speed", "Playback speed"), backdrop, onDismiss) {
         Row(
             Modifier.fillMaxWidth().padding(bottom = 10.dp),
             horizontalArrangement = Arrangement.Center,
@@ -86,7 +86,7 @@ fun SpeedSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () -> Unit) {
         }
 
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            SpeedStepButton(Icons.Rounded.Remove, "Slower") { apply(value - 0.25f) }
+            SpeedStepButton(Icons.Rounded.Remove, I18n.t("slower", "Slower")) { apply(value - 0.25f) }
             Slider(
                 value = value,
                 onValueChange = { value = PlaybackSpeed.snap(it.coerceIn(0.25f, 2.5f)) },
@@ -99,7 +99,7 @@ fun SpeedSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () -> Unit) {
                 ),
                 modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
             )
-            SpeedStepButton(Icons.Rounded.Add, "Faster") { apply(value + 0.25f) }
+            SpeedStepButton(Icons.Rounded.Add, I18n.t("faster", "Faster")) { apply(value + 0.25f) }
         }
 
         Spacer(Modifier.height(16.dp))
@@ -109,7 +109,7 @@ fun SpeedSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () -> Unit) {
                     SpeedChip(
                         label = PlaybackSpeed.label(speed) + "×",
                         selected = abs(value - speed) < 0.001f,
-                        caption = if (speed == 1f) "Normal" else null,
+                        caption = if (speed == 1f) I18n.t("normal", "Normal") else null,
                         modifier = Modifier.weight(1f),
                     ) { apply(speed) }
                 }
@@ -127,9 +127,9 @@ fun SpeedSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text("Remember speed", fontSize = 14.5.sp, fontWeight = FontWeight.Bold)
+                Text(I18n.t("remember_speed", "Remember speed"), fontSize = 14.5.sp, fontWeight = FontWeight.Bold)
                 Text(
-                    "Use this speed for every video",
+                    I18n.t("remember_speed_sub", "Use this speed for every video"),
                     color = c.onSurfaceVariant,
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -174,9 +174,9 @@ fun AudioTrackSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () -> Uni
     val c = MaterialTheme.colorScheme
     LaunchedEffect(Unit) { state.refreshTracks() }
     val activeKey = state.audioOptions.firstOrNull { it.key == AudioTrackPreference.key }?.key
-    PlayerGlassSheet("Audio track", backdrop, onDismiss) {
+    PlayerGlassSheet(I18n.t("audio_track", "Audio track"), backdrop, onDismiss) {
         Text(
-            "Original audio is the default for every show, so dubs never take over.",
+            I18n.t("original_audio_note", "Original audio is the default for every show, so dubs never take over."),
             color = c.onSurfaceVariant,
             fontSize = 12.5.sp,
             fontWeight = FontWeight.SemiBold,
@@ -184,8 +184,8 @@ fun AudioTrackSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () -> Uni
         )
 
         TrackRow(
-            title = "Original",
-            detail = "The creator's own audio track",
+            title = I18n.t("original", "Original"),
+            detail = I18n.t("original_audio_detail", "The creator's own audio track"),
             selected = activeKey == null,
             icon = Icons.Rounded.Headphones,
         ) {
@@ -208,7 +208,7 @@ fun AudioTrackSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () -> Uni
 
         if (state.audioOptions.isEmpty()) {
             Text(
-                "No alternate audio tracks for this video.",
+                I18n.t("no_audio_tracks", "No alternate audio tracks for this video."),
                 color = c.onSurfaceVariant,
                 fontSize = 12.5.sp,
                 fontWeight = FontWeight.Medium,
@@ -228,11 +228,11 @@ fun AudioTrackSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () -> Uni
             Icon(Icons.Rounded.Subtitles, null, tint = c.primary, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("Captions", fontSize = 14.5.sp, fontWeight = FontWeight.Bold)
+                Text(I18n.t("captions", "Captions"), fontSize = 14.5.sp, fontWeight = FontWeight.Bold)
                 Text(
                     when {
-                        state.selectedSubtitleLanguage != null -> "Showing captions"
-                        else -> "Turn on captions for this video"
+                        state.selectedSubtitleLanguage != null -> I18n.t("captions_showing", "Showing captions")
+                        else -> I18n.t("captions_turn_on", "Turn on captions for this video")
                     },
                     color = c.onSurfaceVariant,
                     fontSize = 12.5.sp,
@@ -413,7 +413,7 @@ private fun PlayerGlassSheet(
                     fontSize = 18.sp,
                     modifier = Modifier.weight(1f),
                 )
-                CircleAction(Icons.Rounded.Close, "Close", onDismiss)
+                CircleAction(Icons.Rounded.Close, I18n.t("close", "Close"), onDismiss)
             }
             Column(
                 modifier = Modifier

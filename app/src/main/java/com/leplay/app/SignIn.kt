@@ -85,12 +85,12 @@ fun SignInScreen(onDone: () -> Unit, onCancel: () -> Unit) {
                     .pressable(onClick = onCancel),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.Close, "Cancel", tint = c.onSurface)
+                Icon(Icons.Rounded.Close, I18n.t("cancel", "Cancel"), tint = c.onSurface)
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    "Sign in with Google",
+                    I18n.t("sign_in_google", "Sign in with Google"),
                     fontFamily = RoundedHeavy,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
@@ -105,7 +105,7 @@ fun SignInScreen(onDone: () -> Unit, onCancel: () -> Unit) {
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        "Your credentials are never stored anywhere • Direct, encrypted sign-in",
+                        I18n.t("sign_in_privacy_note", "Your credentials are never stored anywhere • Direct, encrypted sign-in"),
                         color = c.onSurfaceVariant,
                         fontSize = 11.5.sp,
                         maxLines = 1,
@@ -157,7 +157,7 @@ fun SignInScreen(onDone: () -> Unit, onCancel: () -> Unit) {
                                         }
                                         .onFailure {
                                             finishing = false
-                                            error = "Signed in, but YouTube didn't answer. Check your connection and try again."
+                                            error = I18n.t("sign_in_no_answer_error", "Signed in, but YouTube didn't answer. Check your connection and try again.")
                                         }
                                 }
                             }
@@ -185,11 +185,11 @@ fun SignInScreen(onDone: () -> Unit, onCancel: () -> Unit) {
                     if (error == null) {
                         CircularProgressIndicator(color = c.primary, strokeWidth = 4.dp, modifier = Modifier.size(36.dp))
                         Spacer(Modifier.height(16.dp))
-                        Text("Finishing sign-in…", fontWeight = FontWeight.Bold)
+                        Text(I18n.t("sign_in_finishing", "Finishing sign-in…"), fontWeight = FontWeight.Bold)
                     } else {
                         Text(error.orEmpty(), textAlign = TextAlign.Center, color = c.onSurfaceVariant)
                         Spacer(Modifier.height(16.dp))
-                        PillButton("Close", onCancel)
+                        PillButton(I18n.t("close", "Close"), onCancel)
                     }
                 }
             }
@@ -201,7 +201,7 @@ fun SignInScreen(onDone: () -> Unit, onCancel: () -> Unit) {
 @Composable
 fun HeaderActions(onSearch: () -> Unit, onAccount: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        CircleAction(Icons.Rounded.Search, "Search", onSearch)
+        CircleAction(Icons.Rounded.Search, I18n.t("search", "Search"), onSearch)
         AccountAction(onAccount)
     }
 }
@@ -231,7 +231,7 @@ fun AccountAction(onClick: () -> Unit) {
             Modifier.size(42.dp).pressable(onClick = onClick).clip(CircleShape).then(glass),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.AccountCircle, "Sign in", tint = c.onSurface, modifier = Modifier.size(23.dp))
+            Icon(Icons.Rounded.AccountCircle, I18n.t("sign_in", "Sign in"), tint = c.onSurface, modifier = Modifier.size(23.dp))
         }
     } else {
         Box(
@@ -257,24 +257,22 @@ fun AccountSheet(onSignIn: () -> Unit, onSignedOut: () -> Unit, onDismiss: () ->
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (profile == null) {
-                Text("Your YouTube, without the ads", fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, textAlign = TextAlign.Center)
+                Text(I18n.t("sign_in_hero_title", "Your YouTube, without the ads"), fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Sign in to get your recommendations, subscriptions, history and playlists. " +
-                        "Likes, subscribes, Watch later and watch history sync back to your account.\n\n" +
-                        "Google treats unofficial apps as against its terms and can suspend accounts that use them. " +
-                        "A secondary Google account keeps that risk away from your main one.",
+                    I18n.t("sign_in_hero_sub", "Sign in to get your recommendations, subscriptions, history and playlists. Likes, subscribes, Watch later and watch history sync back to your account.\n\n") +
+                        I18n.t("sign_in_risk_warning", "Google treats unofficial apps as against its terms and can suspend accounts that use them. A secondary Google account keeps that risk away from your main one."),
                     color = c.onSurfaceVariant, fontSize = 14.sp, lineHeight = 20.sp, textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(20.dp))
-                PillButton("Sign in with Google", { onDismiss(); onSignIn() })
+                PillButton(I18n.t("sign_in_google", "Sign in with Google"), { onDismiss(); onSignIn() })
             } else {
                 ChannelAvatar(profile.avatar, profile.name, size = 72)
                 Spacer(Modifier.height(12.dp))
                 Text(profile.name, fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
                 profile.handle?.let { Text(it, color = c.onSurfaceVariant, fontSize = 14.sp) }
                 Spacer(Modifier.height(20.dp))
-                PillButton("Sign out", { Account.signOut(); onSignedOut(); onDismiss() }, Icons.AutoMirrored.Rounded.Logout)
+                PillButton(I18n.t("sign_out", "Sign out"), { Account.signOut(); onSignedOut(); onDismiss() }, Icons.AutoMirrored.Rounded.Logout)
             }
 
             Spacer(Modifier.height(28.dp))

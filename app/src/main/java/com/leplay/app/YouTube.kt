@@ -427,22 +427,22 @@ object YouTube {
 
 
     fun friendlyError(t: Throwable): String = when (t) {
-        is AgeRestrictedContentException -> "This video is age-restricted and needs a YouTube account to watch."
-        is GeographicRestrictionException -> "This video isn't available in your country."
+        is AgeRestrictedContentException -> I18n.t("err_age_restricted", "This video is age-restricted and needs a YouTube account to watch.")
+        is GeographicRestrictionException -> I18n.t("err_geo_restricted", "This video isn't available in your country.")
         is org.schabi.newpipe.extractor.exceptions.SignInConfirmNotBotException ->
 
 
-            "YouTube is blocking this video for a moment. Try again in a minute, or switch networks."
-        is org.schabi.newpipe.extractor.exceptions.PrivateContentException -> "This video is private."
+            I18n.t("err_blocked_moment", "YouTube is blocking this video for a moment. Try again in a minute, or switch networks.")
+        is org.schabi.newpipe.extractor.exceptions.PrivateContentException -> I18n.t("err_private_video", "This video is private.")
 
 
         is ContentNotAvailableException ->
             if (t.message.orEmpty().contains("member", ignoreCase = true) || t is org.schabi.newpipe.extractor.exceptions.PaidContentException)
-                "This is a members-only video. LePlay can't play members-only videos yet."
-            else "This video isn't available."
-        is ReCaptchaException -> "YouTube is rate-limiting requests right now. Try again in a minute."
-        is IOException -> "Couldn't reach YouTube. Check your connection."
-        else -> "Something went wrong loading this. Try again."
+                I18n.t("err_members_only", "This is a members-only video. LePlay can't play members-only videos yet.")
+            else I18n.t("err_video_unavailable", "This video isn't available.")
+        is ReCaptchaException -> I18n.t("err_rate_limited", "YouTube is rate-limiting requests right now. Try again in a minute.")
+        is IOException -> I18n.t("err_no_connection", "Couldn't reach YouTube. Check your connection.")
+        else -> I18n.t("err_generic", "Something went wrong loading this. Try again.")
     }
 }
 
