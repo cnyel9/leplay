@@ -1772,22 +1772,31 @@ object InnerTube {
      */
     internal fun parseChannelSortTokens(root: JSONObject): Map<ChannelVideoSort, String> {
         val out = LinkedHashMap<ChannelVideoSort, String>()
+        // YouTube always serves the chips in Latest / Popular / Oldest order;
+        // labels are localized (Terbaru / Populer / Terlama in Indonesian), so
+        // the array position is the fallback when a label is unrecognized.
+        val byIndex = listOf(ChannelVideoSort.Latest, ChannelVideoSort.Popular, ChannelVideoSort.Oldest)
         root.walk { key, obj ->
-            if (key != "chipViewModel") return@walk
-            val label = obj.optString("text")
-            val sort = when {
-                label.contains("latest", ignoreCase = true) || label.contains("newest", ignoreCase = true) -> ChannelVideoSort.Latest
-                label.contains("popular", ignoreCase = true) -> ChannelVideoSort.Popular
-                label.contains("oldest", ignoreCase = true) -> ChannelVideoSort.Oldest
-                else -> return@walk
+            if (key != "chipBarViewModel" || out.isNotEmpty()) return@walk
+            val chips = obj.optJSONArray("chips") ?: return@walk
+            for (i in 0 until chips.length()) {
+                val chip = chips.optJSONObject(i)?.optJSONObject("chipViewModel") ?: continue
+                val token = chip.optJSONObject("tapCommand")
+                    ?.optJSONObject("innertubeCommand")
+                    ?.optJSONObject("continuationCommand")
+                    ?.optString("token")
+                    ?.takeIf { it.isNotBlank() } ?: continue
+                val decoded = runCatching { URLDecoder.decode(token, "UTF-8") }.getOrDefault(token)
+                val label = chip.optString("text")
+                val sort = when {
+                    label.contains("latest", ignoreCase = true) || label.contains("newest", ignoreCase = true) ||
+                        label.contains("terbaru", ignoreCase = true) -> ChannelVideoSort.Latest
+                    label.contains("popular", ignoreCase = true) || label.contains("populer", ignoreCase = true) -> ChannelVideoSort.Popular
+                    label.contains("oldest", ignoreCase = true) || label.contains("terlama", ignoreCase = true) -> ChannelVideoSort.Oldest
+                    else -> byIndex.getOrNull(i)
+                } ?: continue
+                if (sort !in out) out[sort] = decoded
             }
-            if (sort in out) return@walk
-            val token = obj.optJSONObject("tapCommand")
-                ?.optJSONObject("innertubeCommand")
-                ?.optJSONObject("continuationCommand")
-                ?.optString("token")
-                ?.takeIf { it.isNotBlank() } ?: return@walk
-            out[sort] = runCatching { URLDecoder.decode(token, "UTF-8") }.getOrDefault(token)
         }
         return out
     }

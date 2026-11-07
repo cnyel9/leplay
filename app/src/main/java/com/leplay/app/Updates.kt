@@ -86,7 +86,7 @@ data class UpdateInfo(
  * newer than the latest published release). Keep this in sync with the build.
  */
 internal val RELEASE_NOTES = """
-    • LePlay 0.0.3: channel video sorting (Latest, Popular, Oldest) and live chat replay on past streams.
+    • LePlay 0.0.4: channel sort chips now work on Indonesian YouTube accounts, and chat replay is detected for signed-out users too.
     • Ad-free YouTube and YouTube Music playback with a Liquid Glass UI.
     • Personalised Shorts feed, synced lyrics, and high-quality downloads up to 4K HDR.
     • Background playback, Picture-in-Picture, and Android TV mode.

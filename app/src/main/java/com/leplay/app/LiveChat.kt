@@ -431,8 +431,22 @@ object LiveChatFeed {
                 if (token != null) break
             }
         }
-        return token
+        // The anonymous "next" response carries no chat renderer at all, so
+        // signed-out users fall back to the watch page, whose embedded data
+        // holds the same replay continuation when a replay exists.
+        return token ?: replayTokenFromWatchPage(videoId)
     }
+
+    private fun replayTokenFromWatchPage(videoId: String): String? = runCatching {
+        val request = okhttp3.Request.Builder()
+            .url("https://www.youtube.com/watch?v=$videoId")
+            .header("User-Agent", Net.USER_AGENT)
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .build()
+        val html = Net.client.newCall(request).execute().use { it.body?.string().orEmpty() }
+        Regex("\"liveChatReplayContinuationData\"\\s*:\\s*\\{\\s*\"continuation\"\\s*:\\s*\"([^\"]+)\"")
+            .find(html)?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
+    }.getOrNull()
 
     /**
      * Fetches one replay page. Each replayChatItemAction carries the video

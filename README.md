@@ -8,7 +8,7 @@
 
 **A lightweight YouTube and YouTube Music client with a modern Liquid Glass UI, ad-free playback, synced lyrics, and high-quality downloads for Android phones, tablets, and TV.**
 
-[![Version](https://img.shields.io/badge/Version-1.0.1-E50914?style=flat-square&logo=android&logoColor=white)](https://github.com/cnyel9/leplay/releases/latest)
+[![Version](https://img.shields.io/github/v/release/cnyel9/leplay?style=flat-square&logo=android&logoColor=white&label=Version&color=E50914)](https://github.com/cnyel9/leplay/releases/latest)
 [![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](https://github.com/cnyel9/leplay/releases/latest)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg?style=flat-square)](LICENSE)
 
@@ -38,9 +38,9 @@
 
 ## Download
 
-[**Download Latest APK (v0.0.3)**](https://github.com/cnyel9/leplay/releases/latest)
+[**Download Latest APK (v0.0.4)**](https://github.com/cnyel9/leplay/releases/latest)
 
-> **Version 0.0.3** · Android 7.0+ · One universal APK for phones, tablets, and Android TV.
+> **Version 0.0.4** · Android 7.0+ · One universal APK for phones, tablets, and Android TV.
 
 ---
 
