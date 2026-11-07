@@ -640,7 +640,7 @@ fun ChannelScreen(
                                 )
                             }
                         } else {
-                            items(state.communityPosts, key = { it.id }) { post -> CommunityCard(post) }
+                            items(state.communityPosts, key = { it.id }) { post -> CommunityCard(post, modifier = if (GlassSettings.liteMode) Modifier else Modifier.animateItem()) }
                         }
                     }
                 }

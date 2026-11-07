@@ -3,9 +3,14 @@ package com.leplay.app
 import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -287,7 +292,21 @@ fun MusicScreen(
     }
 
     Box(Modifier.fillMaxSize()) {
-        if (isSearching) {
+        AnimatedContent(
+            targetState = isSearching,
+            transitionSpec = {
+                if (GlassSettings.liteMode) {
+                    fadeIn(snap()) togetherWith fadeOut(snap())
+                } else {
+                    (fadeIn(tween(220, easing = Motion.Emphasized)) + slideInVertically(tween(280, easing = Motion.Emphasized)) { it / 12 }) togetherWith
+                        fadeOut(tween(90, easing = Motion.Emphasized))
+                }
+            },
+            sizeTransform = null,
+            label = "musicBranch",
+            modifier = Modifier.fillMaxSize(),
+        ) { searching ->
+        if (searching) {
             DedicatedMusicSearchView(
                 query = searchQuery,
                 onQueryChange = { q ->
@@ -382,11 +401,13 @@ fun MusicScreen(
                                         modifier = Modifier.padding(top = 10.dp),
                                     ) {
                                         itemsIndexed(state.recentPlays, key = { _, video -> "recent_" + video.id }) { index, video ->
-                                            MusicTrackSquareCard(
-                                                video = video,
-                                                onClick = { onOpenQueue(state.recentPlays, index) },
-                                                onOptions = { trackOptionsFor = video },
-                                            )
+                                            Box(if (GlassSettings.liteMode) Modifier else Modifier.animateItem()) {
+                                                MusicTrackSquareCard(
+                                                    video = video,
+                                                    onClick = { onOpenQueue(state.recentPlays, index) },
+                                                    onOptions = { trackOptionsFor = video },
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -406,11 +427,13 @@ fun MusicScreen(
                                         modifier = Modifier.padding(top = 10.dp),
                                     ) {
                                         itemsIndexed(state.likedTracks, key = { _, video -> "liked_" + video.id }) { index, video ->
-                                            MusicTrackSquareCard(
-                                                video = video,
-                                                onClick = { onOpenQueue(state.likedTracks, index) },
-                                                onOptions = { trackOptionsFor = video },
-                                            )
+                                            Box(if (GlassSettings.liteMode) Modifier else Modifier.animateItem()) {
+                                                MusicTrackSquareCard(
+                                                    video = video,
+                                                    onClick = { onOpenQueue(state.likedTracks, index) },
+                                                    onOptions = { trackOptionsFor = video },
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -423,7 +446,7 @@ fun MusicScreen(
                                         .filter { it.videoId != null && it.browseId.isNullOrEmpty() && it.playlistId.isNullOrEmpty() }
                                         .mapNotNull { it.toVideoItem() }
                                 }
-                                Column(modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = (if (GlassSettings.liteMode) Modifier else Modifier.animateItem()).fillMaxWidth()) {
                                     MusicSectionHeader(
                                         title = shelf.title,
                                         subtitle = shelf.subtitle ?: I18n.t("music_curated_sub", "Curated for you by YouTube Music"),
@@ -435,6 +458,7 @@ fun MusicScreen(
                                         modifier = Modifier.padding(top = 10.dp),
                                     ) {
                                         items(shelf.items, key = { "item_" + (it.videoId ?: it.browseId ?: it.title) }) { item ->
+                                            Box(if (GlassSettings.liteMode) Modifier else Modifier.animateItem()) {
                                             MusicShelfCard(
                                                 item = item,
                                                 onClick = {
@@ -463,6 +487,7 @@ fun MusicScreen(
                                                     }
                                                 },
                                             )
+                                            }
                                         }
                                     }
                                 }
@@ -485,9 +510,23 @@ fun MusicScreen(
                 }
             }
         }
+        }
 
-
-        mix?.let { selected ->
+        AnimatedContent(
+            targetState = mix,
+            transitionSpec = {
+                if (GlassSettings.liteMode) {
+                    fadeIn(snap()) togetherWith fadeOut(snap())
+                } else {
+                    (fadeIn(tween(220, easing = Motion.Emphasized)) + slideInVertically(tween(280, easing = Motion.Emphasized)) { it / 12 }) togetherWith
+                        fadeOut(tween(90, easing = Motion.Emphasized))
+                }
+            },
+            sizeTransform = null,
+            label = "musicMix",
+            modifier = Modifier.fillMaxSize(),
+        ) { selected ->
+            if (selected != null) {
             MusicMixScreen(
                 item = selected,
                 songs = mixSongs,
@@ -500,6 +539,7 @@ fun MusicScreen(
                 onDownloadSong = ::downloadAudio,
                 onOptions = { trackOptionsFor = it },
             )
+            }
         }
     }
 }
@@ -1028,11 +1068,13 @@ private fun DedicatedMusicSearchView(
                         )
                     }
                     itemsIndexed(results, key = { _, video -> "sr_" + video.id }) { index, video ->
-                        MusicSearchResultRow(
-                            video = video,
-                            onClick = { onOpenTrack(video, index) },
-                            onDownload = { onDownloadTrack(video) },
-                        )
+                        Box(if (GlassSettings.liteMode) Modifier else Modifier.animateItem()) {
+                            MusicSearchResultRow(
+                                video = video,
+                                onClick = { onOpenTrack(video, index) },
+                                onDownload = { onDownloadTrack(video) },
+                            )
+                        }
                     }
                 }
             }
@@ -1334,13 +1376,15 @@ private fun MusicMixScreen(
                     contentPadding = contentPadding,
                 ) {
                     itemsIndexed(songs, key = { _, song -> "mix_" + song.id }) { index, song ->
-                        MusicMixSongRow(
-                            index = index,
-                            song = song,
-                            onClick = { onOpenSong(index) },
-                            onDownload = { onDownloadSong(song) },
-                            onOptions = { onOptions(song) },
-                        )
+                        Box(if (GlassSettings.liteMode) Modifier else Modifier.animateItem()) {
+                            MusicMixSongRow(
+                                index = index,
+                                song = song,
+                                onClick = { onOpenSong(index) },
+                                onDownload = { onDownloadSong(song) },
+                                onOptions = { onOptions(song) },
+                            )
+                        }
                     }
                     item(key = "mix_bottom") { Spacer(Modifier.height(24.dp)) }
                 }

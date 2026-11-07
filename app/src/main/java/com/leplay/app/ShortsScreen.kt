@@ -7,7 +7,9 @@ import android.view.KeyEvent
 import android.view.TextureView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -18,6 +20,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -723,11 +726,16 @@ fun ShortsScreen(
                         }
                     }
 
-                    if (index == page && playError == null && (loading || (buffering && exo.playWhenReady))) {
+                    AnimatedVisibility(
+                        visible = index == page && playError == null && (loading || (buffering && exo.playWhenReady)),
+                        enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(150, easing = Motion.Emphasized)),
+                        exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(150, easing = Motion.Emphasized)),
+                        modifier = Modifier.align(Alignment.Center),
+                    ) {
                         CircularProgressIndicator(
                             color = Color.White,
                             strokeWidth = 2.5.dp,
-                            modifier = Modifier.size(36.dp).align(Alignment.Center),
+                            modifier = Modifier.size(36.dp),
                         )
                     }
 
@@ -1070,7 +1078,25 @@ private fun ShortsTopBar(
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.weight(1f))
-        ShortsCircleButton(if (muted) Icons.Rounded.VolumeOff else Icons.Rounded.VolumeUp, "Sound", onToggleMute, backdrop, glass)
+        Box(
+            Modifier
+                .size(32.dp)
+                .pressable(onClick = onToggleMute)
+                .clip(CircleShape)
+                .liquidGlass(backdrop, glass),
+            contentAlignment = Alignment.Center,
+        ) {
+            AnimatedContent(
+                targetState = muted,
+                transitionSpec = {
+                    if (GlassSettings.liteMode) fadeIn(snap()) togetherWith fadeOut(snap())
+                    else fadeIn(tween(150, easing = Motion.Emphasized)) togetherWith fadeOut(tween(150, easing = Motion.Emphasized))
+                },
+                label = "muteIcon",
+            ) { isMuted ->
+                Icon(if (isMuted) Icons.Rounded.VolumeOff else Icons.Rounded.VolumeUp, contentDescription = "Sound", tint = Color.White, modifier = Modifier.size(16.dp))
+            }
+        }
         Spacer(Modifier.width(6.dp))
         ShortsCircleButton(
             Icons.Rounded.Refresh,
@@ -1239,6 +1265,11 @@ private fun ShortsAction(
         animationSpec = spring(dampingRatio = 0.45f, stiffness = 450f),
         label = "actionScale",
     )
+    val animatedTint by animateColorAsState(
+        targetValue = tint,
+        animationSpec = tween(180, easing = Motion.Emphasized),
+        label = "actionTint",
+    )
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
@@ -1252,7 +1283,7 @@ private fun ShortsAction(
                 .liquidGlass(backdrop, glass),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(20.dp))
+            Icon(icon, contentDescription = label, tint = animatedTint, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.height(3.dp))
         Text(

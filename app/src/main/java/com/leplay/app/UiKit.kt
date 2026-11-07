@@ -1,5 +1,10 @@
 package com.leplay.app
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -479,8 +484,13 @@ fun EmptyState(
     action: (@Composable () -> Unit)? = null,
 ) {
     val c = MaterialTheme.colorScheme
+    AnimatedVisibility(
+        visible = true,
+        enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(260, easing = Motion.Emphasized)) + slideInVertically(tween(320, easing = Motion.Emphasized)) { it / 8 },
+        modifier = modifier,
+    ) {
     Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 48.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 36.dp, vertical = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
@@ -497,6 +507,7 @@ fun EmptyState(
             Spacer(Modifier.height(20.dp))
             action()
         }
+    }
     }
 }
 

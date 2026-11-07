@@ -1,6 +1,15 @@
 package com.leplay.app
 
 import android.content.Intent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -117,6 +126,10 @@ private fun OptionRow(icon: ImageVector, label: String, onClick: () -> Unit) {
 fun QueueCard(player: PlayerState, onOpen: () -> Unit) {
     val c = MaterialTheme.colorScheme
     val next = player.queue.firstOrNull() ?: return
+    AnimatedVisibility(
+        visible = true,
+        enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(260, easing = Motion.Emphasized)) + slideInVertically(tween(320, easing = Motion.Emphasized)) { it / 8 },
+    ) {
     Row(
         Modifier
             .padding(top = 16.dp)
@@ -137,6 +150,7 @@ fun QueueCard(player: PlayerState, onOpen: () -> Unit) {
             Text(next.title, color = c.onSecondaryContainer, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, tint = c.onSecondaryContainer)
+    }
     }
 }
 
@@ -163,7 +177,7 @@ fun QueueSheet(player: PlayerState, onDismiss: () -> Unit) {
         } else {
             LazyColumn(Modifier.fillMaxHeight(0.7f)) {
                 itemsIndexed(player.queue, key = { i, v -> "$i-${v.id}" }) { index, video ->
-                    Box(Modifier.padding(horizontal = 20.dp)) {
+                    Box((if (GlassSettings.liteMode) Modifier else Modifier.animateItem()).padding(horizontal = 20.dp)) {
                         VideoRow(video, onClick = { player.playFromQueue(index); onDismiss() }) {
                             Box(Modifier.size(40.dp).pressable { player.removeFromQueue(index) }, contentAlignment = Alignment.Center) {
                                 Icon(Icons.Rounded.Close, I18n.t("remove_from_queue", "Remove from queue"), tint = c.onSurfaceVariant)
@@ -194,9 +208,15 @@ fun SponsorBlockSettings() {
                 colors = SwitchDefaults.colors(checkedTrackColor = c.primary),
             )
         }
-        if (SponsorBlock.enabled) {
-            Spacer(Modifier.height(10.dp))
-            SponsorBlock.Category.entries.forEach { category -> CategoryRow(category) }
+        AnimatedVisibility(
+            visible = SponsorBlock.enabled,
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(180)) + expandVertically(tween(260)),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(140)) + shrinkVertically(tween(200)),
+        ) {
+            Column {
+                Spacer(Modifier.height(10.dp))
+                SponsorBlock.Category.entries.forEach { category -> CategoryRow(category) }
+            }
         }
         Spacer(Modifier.height(10.dp))
         Text(
@@ -220,11 +240,16 @@ private fun CategoryRow(category: SponsorBlock.Category) {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             SponsorBlock.Action.entries.forEach { action ->
                 val on = action == current
+                val chipBg by animateColorAsState(
+                    targetValue = if (on) c.secondaryContainer else c.surfaceContainerHighest,
+                    animationSpec = tween(260, easing = Motion.Emphasized),
+                    label = "sbChipBg",
+                )
                 Box(
                     Modifier
                         .pressable { SponsorBlock.setAction(category, action) }
                         .clip(RoundedCornerShape(if (on) 18.dp else 10.dp))
-                        .background(if (on) c.secondaryContainer else c.surfaceContainerHighest)
+                        .background(chipBg)
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                 ) {
                     Text(action.displayLabel, color = if (on) c.onSecondaryContainer else c.onSurfaceVariant, fontWeight = FontWeight.Bold, fontSize = 13.sp)

@@ -1,5 +1,10 @@
 package com.leplay.app
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -8,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudOff
@@ -226,6 +233,18 @@ fun FeedList(
         ChannelAvatars.resolve(scope, listVideos, channelAvatarSeed)
     }
     val list = rememberScrollToTop(scrollToTop)
+    val skeletonTransition = rememberInfiniteTransition(label = "skeletonPulse")
+    val skeletonPulse by skeletonTransition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0.9f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = Motion.Emphasized),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "skeletonAlpha",
+    )
+    val skeletonAlpha = if (GlassSettings.liteMode) 0.7f else skeletonPulse
+    val initialLoading = listVideos.isEmpty() && feed.loading && feed.error == null
 
     LaunchedEffect(feed.generation, filterScrollKey) { list.scrollToItem(0) }
     val nearEnd by remember {
@@ -247,7 +266,7 @@ fun FeedList(
         }
         when {
 
-
+            initialLoading -> items(3, key = { "skeleton-$it" }) { SkeletonVideoCard(skeletonAlpha) }
             feed.error != null && listVideos.isEmpty() -> item {
                 EmptyState(
                     icon = Icons.Rounded.CloudOff,
@@ -269,6 +288,31 @@ fun FeedList(
 
 
 
+
+@Composable
+private fun SkeletonVideoCard(alpha: Float) {
+    val c = MaterialTheme.colorScheme
+    val fill = c.surfaceContainerHigh.copy(alpha = alpha)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(fill),
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.Top) {
+            Box(Modifier.size(36.dp).clip(CircleShape).background(fill))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Box(Modifier.fillMaxWidth().height(14.dp).clip(RoundedCornerShape(4.dp)).background(fill))
+                Spacer(Modifier.height(8.dp))
+                Box(Modifier.fillMaxWidth(0.6f).height(12.dp).clip(RoundedCornerShape(4.dp)).background(fill))
+            }
+        }
+    }
+}
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable

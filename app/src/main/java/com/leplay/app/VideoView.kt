@@ -5,13 +5,21 @@ import android.content.Context
 import android.media.AudioManager
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -52,6 +60,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -190,6 +199,7 @@ fun VideoContent(
         }
     }
     val reduced = rememberReducedMotion()
+    val reducedMotion = rememberReducedMotion() || GlassSettings.liteMode
     val visibleAlpha by animateFloatAsState(
         targetValue = if (controlsVisible) 1f else 0f,
         animationSpec = if (reduced) tween(0) else tween(160, easing = Motion.Emphasized),
@@ -488,7 +498,7 @@ fun VideoContent(
         }
         val zoomAlpha by animateFloatAsState(
             targetValue = if (showZoomPill || controlsVisible) 1f else 0f,
-            animationSpec = tween(300),
+            animationSpec = if (reducedMotion) tween(0) else tween(300),
             label = "zoomPillAlpha"
         )
         if (state.videoZoom > 1.05f && zoomAlpha > 0f) {
@@ -516,8 +526,15 @@ fun VideoContent(
         if (state.holdSpeedActive) {
             HoldSpeedPill(Modifier.align(Alignment.TopCenter).padding(top = 12.dp).graphicsLayer { alpha = controlsAlpha() })
         }
-        gestureHud?.let { (icon, info) ->
-            GestureHUD(icon = icon, label = info.first, percent = info.second, modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp))
+        AnimatedVisibility(
+            visible = gestureHud != null,
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(150, easing = Motion.Emphasized)),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(150, easing = Motion.Emphasized)),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 18.dp),
+        ) {
+            gestureHud?.let { (icon, info) ->
+                GestureHUD(icon = icon, label = info.first, percent = info.second)
+            }
         }
 
         val error = state.error
@@ -528,8 +545,13 @@ fun VideoContent(
 
         val enabled = controlsVisible && interactive
 
-        if (!scrubbing && !controlsVisible && (state.isBuffering || (state.loading && state.details == null))) {
-            CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.align(Alignment.Center).size(36.dp))
+        AnimatedVisibility(
+            visible = !scrubbing && !controlsVisible && (state.isBuffering || (state.loading && state.details == null)),
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(150, easing = Motion.Emphasized)),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(150, easing = Motion.Emphasized)),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(36.dp))
         }
         if (!scrubbing) {
             SkippedNote(state, Modifier.align(Alignment.TopCenter).padding(top = 12.dp).graphicsLayer { alpha = controlsAlpha() })
@@ -559,14 +581,21 @@ fun VideoContent(
             } else {
                 Modifier
             }
-            Box(Modifier.fillMaxSize().then(edge)) {
+            BoxWithConstraints(Modifier.fillMaxSize().then(edge)) {
+                val paneW = maxWidth
+                val compact = paneW < 560.dp
+                val baseTotal = if (fullscreen) 414.dp else 297.dp
+                val clusterScale = minOf(1f, paneW / baseTotal)
+                val clusterGap = ((if (fullscreen) 36.dp else 16.dp) * clusterScale).coerceAtLeast(8.dp)
+                val clusterSkip = ((if (fullscreen) 50.dp else 43.dp) * clusterScale).coerceAtLeast(40.dp)
+                val clusterPlay = ((if (fullscreen) 70.dp else 61.dp) * clusterScale).coerceAtLeast(54.dp)
 
                 Row(
                     Modifier
                         .align(Alignment.TopStart)
                         .fillMaxWidth()
                         .then(if (fullscreen) Modifier.statusBarsPadding() else Modifier)
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                        .padding(horizontal = if (compact) 6.dp else 10.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (fullscreen) {
@@ -574,7 +603,7 @@ fun VideoContent(
                             touched()
                             onToggleFullscreen()
                         }
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(if (compact) 4.dp else 8.dp))
                         Text(
                             state.current?.title.orEmpty(),
                             color = Color.White,
@@ -591,7 +620,7 @@ fun VideoContent(
                                 touched()
                                 state.sheet = PlayerSheet.Comments
                             }
-                            Spacer(Modifier.width(6.dp))
+                            Spacer(Modifier.width(if (compact) 4.dp else 6.dp))
                         }
                     } else {
                         GlassButton(Icons.Rounded.KeyboardArrowDown, I18n.t("minimize", "Minimize"), enabled, size = 32.dp, iconSize = 22.dp, backdrop = videoBackdrop) {
@@ -633,10 +662,10 @@ fun VideoContent(
                 }
                 Row(
                     modifier = Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(if (fullscreen) 36.dp else 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(clusterGap),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val skip = if (fullscreen) 50.dp else 43.dp
+                    val skip = clusterSkip
                     GlassButton(Icons.Rounded.SkipPrevious, I18n.t("previous", "Previous"), enabled && state.current?.isLive != true, size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
                         touched(); state.previousVideo()
                     }
@@ -656,7 +685,7 @@ fun VideoContent(
                     MorphPlayButton(
                         playing = state.isPlaying,
                         buffering = state.isBuffering || (state.loading && state.details == null),
-                        size = if (fullscreen) 70.dp else 61.dp,
+                        size = clusterPlay,
 
                         container = Color.Transparent,
                         content = Color.White,
@@ -706,7 +735,7 @@ fun VideoContent(
                                 tinted = false,
                                 backdrop = videoBackdrop,
                             ) { touched(); state.sheet = PlayerSheet.Speed }
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.width(if (compact) 4.dp else 8.dp))
                             GlassButton(
                                 Icons.Rounded.HighQuality,
                                 I18n.t("quality", "Quality"),
@@ -716,7 +745,7 @@ fun VideoContent(
                                 tinted = false,
                                 backdrop = videoBackdrop,
                             ) { touched(); state.sheet = PlayerSheet.Quality }
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.width(if (compact) 4.dp else 8.dp))
                         }
                         GlassButton(
                             if (fullscreen) Icons.Rounded.FullscreenExit else Icons.Rounded.Fullscreen,
@@ -865,23 +894,29 @@ fun AudioOnlyStage(
             Modifier.fillMaxSize().graphicsLayer { alpha = controlsAlpha() }.padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.Center,
         ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TonalSkip(Icons.Rounded.SkipPrevious, I18n.t("previous", "Previous"), interactive && state.current?.isLive != true) { state.previousVideo() }
-                TonalSkip(Icons.Rounded.Replay10, I18n.t("back_10_seconds", "Back 10 seconds"), interactive) { state.seekBy(-10_000) }
-                MorphPlayButton(
-                    playing = state.isPlaying,
-                    buffering = state.isBuffering || (state.loading && state.details == null),
-                    size = 78.dp,
-                    container = c.primary,
-                    content = c.onPrimary,
-                    enabled = interactive,
-                ) { state.togglePlay() }
-                TonalSkip(Icons.Rounded.Forward10, I18n.t("forward_10_seconds", "Forward 10 seconds"), interactive) { state.seekBy(10_000) }
-                TonalSkip(Icons.Rounded.SkipNext, I18n.t("next", "Next"), interactive && state.hasNextVideo()) { state.nextVideo() }
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val stageScale = minOf(1f, maxWidth / 374.dp)
+                val tonalSize = (58.dp * stageScale).coerceAtLeast(44.dp)
+                val stagePlay = (78.dp * stageScale).coerceAtLeast(60.dp)
+                val stageGap = (16.dp * stageScale).coerceAtLeast(8.dp)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(stageGap, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TonalSkip(Icons.Rounded.SkipPrevious, I18n.t("previous", "Previous"), interactive && state.current?.isLive != true, size = tonalSize) { state.previousVideo() }
+                    TonalSkip(Icons.Rounded.Replay10, I18n.t("back_10_seconds", "Back 10 seconds"), interactive, size = tonalSize) { state.seekBy(-10_000) }
+                    MorphPlayButton(
+                        playing = state.isPlaying,
+                        buffering = state.isBuffering || (state.loading && state.details == null),
+                        size = stagePlay,
+                        container = c.primary,
+                        content = c.onPrimary,
+                        enabled = interactive,
+                    ) { state.togglePlay() }
+                    TonalSkip(Icons.Rounded.Forward10, I18n.t("forward_10_seconds", "Forward 10 seconds"), interactive, size = tonalSize) { state.seekBy(10_000) }
+                    TonalSkip(Icons.Rounded.SkipNext, I18n.t("next", "Next"), interactive && state.hasNextVideo(), size = tonalSize) { state.nextVideo() }
+                }
             }
             Spacer(Modifier.height(8.dp))
             var scrubPreview by remember { mutableStateOf<Long?>(null) }
@@ -919,12 +954,12 @@ fun AudioOnlyStage(
 }
 
 @Composable
-private fun TonalSkip(icon: ImageVector, description: String, enabled: Boolean, onClick: () -> Unit) {
+private fun TonalSkip(icon: ImageVector, description: String, enabled: Boolean, size: Dp = 58.dp, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     Box(
-        Modifier.size(58.dp).pressable(enabled = enabled, onClick = onClick).clip(CircleShape).background(c.surfaceContainerHigh),
+        Modifier.size(size).pressable(enabled = enabled, onClick = onClick).clip(CircleShape).background(c.surfaceContainerHigh),
         contentAlignment = Alignment.Center,
-    ) { Icon(icon, description, tint = c.onSurface, modifier = Modifier.size(34.dp)) }
+    ) { Icon(icon, description, tint = c.onSurface, modifier = Modifier.size(size * (34f / 58f))) }
 }
 
 
@@ -1020,7 +1055,12 @@ private fun SkipSegmentPill(segment: SponsorBlock.Segment, enabled: Boolean, mod
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val ink = if (segment.category.color.luminance() > 0.45f) Color(0xFF151515) else Color.White
-        Text(I18n.t("skip_segment", "Skip {category}").replace("{category}", segment.category.shortLabel), color = ink, fontSize = 12.sp, fontWeight = FontWeight.Black)
+        Text(
+            I18n.t("skip_segment", "Skip {category}").replace("{category}", segment.category.shortLabel),
+            color = ink, fontSize = 12.sp, fontWeight = FontWeight.Black,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 150.dp),
+        )
         Icon(Icons.Rounded.SkipNext, null, tint = ink, modifier = Modifier.size(18.dp))
     }
 }
@@ -1028,31 +1068,42 @@ private fun SkipSegmentPill(segment: SponsorBlock.Segment, enabled: Boolean, mod
 
 @Composable
 private fun SkippedNote(state: PlayerState, modifier: Modifier) {
-    val skip = SponsorBlock.lastSkip?.takeIf { it.videoId == state.current?.id } ?: return
+    val skip = SponsorBlock.lastSkip?.takeIf { it.videoId == state.current?.id }
     LaunchedEffect(skip) {
-        delay(4_000)
-        if (SponsorBlock.lastSkip == skip) SponsorBlock.lastSkip = null
+        if (skip != null) {
+            delay(4_000)
+            if (SponsorBlock.lastSkip == skip) SponsorBlock.lastSkip = null
+        }
     }
-    Row(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.6f))
-            .padding(start = 14.dp, end = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    AnimatedVisibility(
+        visible = skip != null,
+        enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(180, easing = Motion.Emphasized)) + slideInVertically(tween(220, easing = Motion.Emphasized)) { it / 2 },
+        exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(150, easing = Motion.Emphasized)),
+        modifier = modifier,
     ) {
-        Text(
-            I18n.t("skipped_segment", "Skipped {duration} {category}").replace("{duration}", formatDuration(skip.segment.lengthMs)).replace("{category}", skip.segment.category.shortLabel),
-            modifier = Modifier.weight(1f),
-            color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-            maxLines = 2,
-        )
-        Text(
-            I18n.t("undo", "Undo"),
-            color = skip.segment.category.color, fontSize = 12.sp, fontWeight = FontWeight.Black,
-            modifier = Modifier.pressable { state.undoSkip(skip) }.padding(horizontal = 10.dp, vertical = 8.dp),
-            maxLines = 1,
-            softWrap = false,
-        )
+        if (skip != null) {
+            Row(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .padding(start = 14.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    I18n.t("skipped_segment", "Skipped {duration} {category}").replace("{duration}", formatDuration(skip.segment.lengthMs)).replace("{category}", skip.segment.category.shortLabel),
+                    modifier = Modifier.weight(1f),
+                    color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                )
+                Text(
+                    I18n.t("undo", "Undo"),
+                    color = skip.segment.category.color, fontSize = 12.sp, fontWeight = FontWeight.Black,
+                    modifier = Modifier.pressable { state.undoSkip(skip) }.padding(horizontal = 10.dp, vertical = 8.dp),
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
+        }
     }
 }
 
@@ -1532,7 +1583,7 @@ fun MorphPlayButton(
     glass: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val reduced = rememberReducedMotion()
+    val reduced = rememberReducedMotion() || GlassSettings.liteMode
     val radius by animateDpAsState(
         targetValue = if (playing) size * 0.33f else size / 2,
         animationSpec = if (reduced) tween(0) else spring(dampingRatio = 0.6f, stiffness = 500f),
@@ -1556,12 +1607,25 @@ fun MorphPlayButton(
         if (buffering) {
             CircularProgressIndicator(color = content, strokeWidth = 3.dp, modifier = Modifier.size(size * 0.42f))
         } else {
-            Icon(
-                if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                if (playing) I18n.t("pause", "Pause") else I18n.t("play", "Play"),
-                tint = content,
-                modifier = Modifier.size(size * 0.46f),
-            )
+            AnimatedContent(
+                targetState = playing,
+                transitionSpec = {
+                    if (reduced) {
+                        fadeIn(snap()) togetherWith fadeOut(snap())
+                    } else {
+                        (fadeIn(tween(150, easing = Motion.Emphasized)) + scaleIn(spring(dampingRatio = 0.6f, stiffness = 500f), initialScale = 0.8f)) togetherWith
+                            fadeOut(tween(100, easing = Motion.Emphasized))
+                    }
+                },
+                label = "playGlyph",
+            ) { isPlaying ->
+                Icon(
+                    if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    if (isPlaying) I18n.t("pause", "Pause") else I18n.t("play", "Play"),
+                    tint = content,
+                    modifier = Modifier.size(size * 0.46f),
+                )
+            }
         }
     }
 }
@@ -1645,7 +1709,11 @@ private fun Scrubber(
         tween(160, easing = Motion.Emphasized),
         label = "scrubPlayed",
     )
-    val knobRadius by animateDpAsState(if (dragging) knobDragging else knob, label = "knob")
+    val knobRadius by animateDpAsState(
+        targetValue = if (dragging) knobDragging else knob,
+        animationSpec = if (rememberReducedMotion() || GlassSettings.liteMode) tween(0) else spring(),
+        label = "knob",
+    )
     val h = if (edgeToEdge) 2.dp else trackHeight
     val insetEnds = !edgeToEdge
     Canvas(
@@ -1739,17 +1807,34 @@ private fun GestureHUD(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-            Text(
-                text = "$label ${(percent * 100).toInt().coerceIn(0, 100)}%",
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-            )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Text(
+                    text = "$label ${(percent * 100).toInt().coerceIn(0, 100)}%",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.height(5.dp))
+            Box(
+                Modifier
+                    .width(120.dp)
+                    .height(3.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.3f)),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(percent.coerceIn(0f, 1f))
+                        .fillMaxHeight()
+                        .background(Color.White),
+                )
+            }
         }
     }
 }

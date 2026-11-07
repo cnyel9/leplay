@@ -1,6 +1,8 @@
 package com.leplay.app
 
 import android.widget.Toast
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -296,10 +298,15 @@ fun DownloadsScreen(
 @Composable
 private fun DownloadSectionPill(label: String, count: Int, selected: Boolean, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
+    val pillBg by animateColorAsState(
+        targetValue = if (selected) c.primary else c.surfaceContainerHigh,
+        animationSpec = tween(260, easing = Motion.Emphasized),
+        label = "downloadSectionBg",
+    )
     Row(
         Modifier
             .clip(CircleShape)
-            .background(if (selected) c.primary else c.surfaceContainerHigh)
+            .background(pillBg)
             .pressable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

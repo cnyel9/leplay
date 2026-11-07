@@ -6,9 +6,15 @@ import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.draw.blur
 import com.kyant.backdrop.Backdrop
@@ -360,7 +366,7 @@ fun PlayerScreen(
                         val related = details?.related.orEmpty()
                         if (related.isNotEmpty()) {
                             items(related, key = { "wide-rel-" + it.id }) { video ->
-                                Box(Modifier.padding(horizontal = 14.dp, vertical = 2.dp)) { VideoRow(video, onClick = { onOpen(video) }) }
+                                Box((if (GlassSettings.liteMode) Modifier else Modifier.animateItem()).padding(horizontal = 14.dp, vertical = 2.dp)) { VideoRow(video, onClick = { onOpen(video) }) }
                             }
                         } else if (state.loading) {
                             item(key = "wideLoading") {
@@ -407,7 +413,7 @@ fun PlayerScreen(
                 if (related.isNotEmpty()) {
                     item(key = "moreTitle") { SectionTitle(I18n.t("more_videos", "More videos")) }
                     items(related, key = { "rel-" + it.id }) { video ->
-                        Box(Modifier.padding(horizontal = 20.dp)) { VideoRow(video, onClick = { onOpen(video) }) }
+                        Box((if (GlassSettings.liteMode) Modifier else Modifier.animateItem()).padding(horizontal = 20.dp)) { VideoRow(video, onClick = { onOpen(video) }) }
                     }
                 } else if (state.loading) {
                     item(key = "loading") {
@@ -587,24 +593,34 @@ private fun SubscribeButton(subscribed: Boolean, onClick: () -> Unit) {
 
 
     val radius by animateDpAsState(if (subscribed) 14.dp else 18.dp, if (reduced) tween(0) else spring(dampingRatio = 0.6f, stiffness = 500f), label = "subShape")
+    val containerColor by animateColorAsState(
+        targetValue = if (subscribed) c.secondaryContainer else c.onSurface,
+        animationSpec = tween(240, easing = Motion.Emphasized),
+        label = "detailsSubContainer",
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (subscribed) c.onSecondaryContainer else c.surface,
+        animationSpec = tween(240, easing = Motion.Emphasized),
+        label = "detailsSubContent",
+    )
     Row(
         modifier = Modifier
             .squishOn(subscribed)
             .height(34.dp)
             .pressable(onClick = onClick)
             .clip(RoundedCornerShape(radius))
-            .background(if (subscribed) c.secondaryContainer else c.onSurface)
+            .background(containerColor)
             .animateContentSize(spring(dampingRatio = 0.7f, stiffness = 500f))
             .padding(horizontal = if (subscribed) 10.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (subscribed) {
-            FlourishIcon(Icons.Rounded.NotificationsActive, null, active = subscribed, kind = Flourish.Ring, tint = c.onSecondaryContainer, size = 15.dp)
+            FlourishIcon(Icons.Rounded.NotificationsActive, null, active = subscribed, kind = Flourish.Ring, tint = contentColor, size = 15.dp)
             Spacer(Modifier.width(5.dp))
         }
         Text(
             if (subscribed) I18n.t("subscribed", "Subscribed") else I18n.t("subscribe", "Subscribe"),
-            color = if (subscribed) c.onSecondaryContainer else c.surface,
+            color = contentColor,
             fontWeight = FontWeight.Bold, fontSize = 12.5.sp,
         )
     }
@@ -761,18 +777,27 @@ private fun ActionPill(
 
 @Composable
 private fun ActionMessage(state: PlayerState, modifier: Modifier) {
-    val message = state.actionMessage ?: return
+    val message = state.actionMessage
     LaunchedEffect(message) {
-        kotlinx.coroutines.delay(2_500)
-        state.actionMessage = null
+        if (message != null) {
+            kotlinx.coroutines.delay(2_500)
+            state.actionMessage = null
+        }
     }
     val c = MaterialTheme.colorScheme
-    Box(
-        modifier
-            .clip(CircleShape)
-            .background(c.inverseSurface)
-            .padding(horizontal = 18.dp, vertical = 11.dp),
-    ) { Text(message, color = c.inverseOnSurface, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+    AnimatedVisibility(
+        visible = message != null,
+        enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(180, easing = Motion.Emphasized)) + slideInVertically(tween(220, easing = Motion.Emphasized)) { it / 2 },
+        exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(150, easing = Motion.Emphasized)),
+        modifier = modifier,
+    ) {
+        Box(
+            Modifier
+                .clip(CircleShape)
+                .background(c.inverseSurface)
+                .padding(horizontal = 18.dp, vertical = 11.dp),
+        ) { Text(message.orEmpty(), color = c.inverseOnSurface, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+    }
 }
 
 
@@ -861,6 +886,30 @@ fun LiquidMiniPlayer(
                 MiniDetails(state, interactive = true)
             }
         }
+    }
+}
+
+@Composable
+private fun PlayPauseGlyph(playing: Boolean, tint: Color, size: Dp) {
+    val reduced = rememberReducedMotion() || GlassSettings.liteMode
+    AnimatedContent(
+        targetState = playing,
+        transitionSpec = {
+            if (reduced) {
+                fadeIn(snap()) togetherWith fadeOut(snap())
+            } else {
+                (fadeIn(tween(150, easing = Motion.Emphasized)) + scaleIn(spring(dampingRatio = 0.6f, stiffness = 500f), initialScale = 0.8f)) togetherWith
+                    fadeOut(tween(100, easing = Motion.Emphasized))
+            }
+        },
+        label = "playPauseGlyph",
+    ) { isPlaying ->
+        Icon(
+            imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+            contentDescription = if (isPlaying) I18n.t("pause", "Pause") else I18n.t("play", "Play"),
+            tint = tint,
+            modifier = Modifier.size(size),
+        )
     }
 }
 
@@ -963,12 +1012,7 @@ fun MiniPlayer(
                             modifier = Modifier.size(14.dp),
                         )
                     } else {
-                        Icon(
-                            imageVector = if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = if (state.isPlaying) I18n.t("pause", "Pause") else I18n.t("play", "Play"),
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp),
-                        )
+                        PlayPauseGlyph(state.isPlaying, Color.White, 16.dp)
                     }
                 }
 
@@ -1065,12 +1109,7 @@ private fun RowScope.MiniDetails(state: PlayerState, interactive: Boolean) {
                         modifier = Modifier.size(20.dp)
                     )
                 } else {
-                    Icon(
-                        imageVector = if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        contentDescription = if (state.isPlaying) I18n.t("pause", "Pause") else I18n.t("play", "Play"),
-                        tint = c.onSurface,
-                        modifier = Modifier.size(26.dp)
-                    )
+                    PlayPauseGlyph(state.isPlaying, c.onSurface, 26.dp)
                 }
             }
             Spacer(Modifier.width(6.dp))
@@ -1183,7 +1222,7 @@ fun BitChordMusicPlayer(
     }
     val albumScale by animateFloatAsState(
         targetValue = if (state.isPlaying) 1.0f else 0.92f,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f),
+        animationSpec = if (rememberReducedMotion() || GlassSettings.liteMode) snap() else spring(dampingRatio = 0.7f, stiffness = 400f),
         label = "album_scale",
     )
 
@@ -1317,15 +1356,29 @@ fun BitChordMusicPlayer(
                             shape = RoundedCornerShape(28.dp),
                         ),
                 ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(highResMusicThumbnail(item.thumbnail) ?: sharpenFeedThumbnail(null, item.id))
-                            .crossfade(!GlassSettings.liteMode)
-                            .build(),
-                        contentDescription = item.title,
-                        contentScale = ContentScale.Crop,
+                    AnimatedContent(
+                        targetState = item.id,
+                        transitionSpec = {
+                            if (GlassSettings.liteMode) {
+                                fadeIn(snap()) togetherWith fadeOut(snap())
+                            } else {
+                                (fadeIn(tween(220, easing = Motion.Emphasized)) + scaleIn(spring(dampingRatio = 0.7f, stiffness = 400f), initialScale = 0.96f)) togetherWith
+                                    fadeOut(tween(120, easing = Motion.Emphasized))
+                            }
+                        },
+                        label = "albumArt",
                         modifier = Modifier.fillMaxSize(),
-                    )
+                    ) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(highResMusicThumbnail(item.thumbnail) ?: sharpenFeedThumbnail(null, item.id))
+                                .crossfade(!GlassSettings.liteMode)
+                                .build(),
+                            contentDescription = item.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
 
@@ -1358,12 +1411,14 @@ fun BitChordMusicPlayer(
                 }
                 Spacer(Modifier.width(12.dp))
                 val liked = state.accountState?.like == LikeStatus.Like
-                IconButton(onClick = state::toggleLike) {
-                    Icon(
-                        if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        contentDescription = I18n.t("like", "Like"),
+                IconButton(onClick = state::toggleLike, modifier = Modifier.squishOn(liked)) {
+                    FlourishIcon(
+                        icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                        description = I18n.t("like", "Like"),
+                        active = liked,
+                        kind = Flourish.Pop,
                         tint = if (liked) Color(0xFFFF2D55) else c.onSurfaceVariant,
-                        modifier = Modifier.size(28.dp),
+                        size = 28.dp,
                     )
                 }
             }
@@ -1464,12 +1519,7 @@ fun BitChordMusicPlayer(
                             modifier = Modifier.size(32.dp),
                         )
                     } else {
-                        Icon(
-                            if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = if (state.isPlaying) I18n.t("pause", "Pause") else I18n.t("play", "Play"),
-                            tint = c.surface,
-                            modifier = Modifier.size(40.dp),
-                        )
+                        PlayPauseGlyph(state.isPlaying, c.surface, 40.dp)
                     }
                 }
 
@@ -1586,9 +1636,10 @@ private fun MusicLyricsPanel(
     val c = MaterialTheme.colorScheme
     var entered by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { entered = true }
+    val lyricsReduced = rememberReducedMotion() || GlassSettings.liteMode
     val entrance by animateFloatAsState(
         targetValue = if (entered) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 330f),
+        animationSpec = if (lyricsReduced) snap() else spring(dampingRatio = 0.82f, stiffness = 330f),
         label = "lyrics-entrance",
     )
     Box(
@@ -1884,12 +1935,7 @@ private fun androidx.compose.foundation.layout.BoxScope.BitChordMiniDetails(
                     modifier = Modifier.size(18.dp),
                 )
             } else {
-                Icon(
-                    imageVector = if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = if (state.isPlaying) I18n.t("pause", "Pause") else I18n.t("play", "Play"),
-                    tint = c.onSurface,
-                    modifier = Modifier.size(24.dp),
-                )
+                PlayPauseGlyph(state.isPlaying, c.onSurface, 24.dp)
             }
         }
         Spacer(Modifier.width(6.dp))
@@ -1991,16 +2037,22 @@ private fun VideoDetailsBlock(
                 )
             }
         }
-        if (descriptionOpen && details != null) {
-            SelectionContainer {
-                Text(
-                    details.description,
-                    modifier = Modifier.padding(top = 10.dp),
-                    color = c.onSurfaceVariant,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    fontWeight = FontWeight.Medium,
-                )
+        AnimatedVisibility(
+            visible = descriptionOpen && details != null,
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else expandVertically(tween(260, easing = Motion.Emphasized)) + fadeIn(tween(180, easing = Motion.Emphasized)),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else shrinkVertically(tween(200, easing = Motion.Emphasized)) + fadeOut(tween(140, easing = Motion.Emphasized)),
+        ) {
+            if (details != null) {
+                SelectionContainer {
+                    Text(
+                        details.description,
+                        modifier = Modifier.padding(top = 10.dp),
+                        color = c.onSurfaceVariant,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
             }
         }
         Spacer(Modifier.height(16.dp))

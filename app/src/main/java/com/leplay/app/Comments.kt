@@ -2,9 +2,13 @@ package com.leplay.app
 
 import androidx.compose.foundation.background
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -272,6 +276,10 @@ fun CommentsCard(state: CommentsState, onOpen: () -> Unit, live: Boolean = false
     val c = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(12.dp)
     val first = state.comments.firstOrNull()
+    AnimatedVisibility(
+        visible = true,
+        enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(260, easing = Motion.Emphasized)) + slideInVertically(tween(320, easing = Motion.Emphasized)) { it / 8 },
+    ) {
     Column(
         modifier = Modifier
             .padding(top = 10.dp)
@@ -338,6 +346,7 @@ fun CommentsCard(state: CommentsState, onOpen: () -> Unit, live: Boolean = false
                 else -> Text(if (Account.signedIn) I18n.t("no_comments_first", "No comments yet. Add the first one.") else I18n.t("no_comments", "No comments yet."), color = c.onSurfaceVariant, fontSize = 12.sp)
             }
         }
+    }
     }
 }
 

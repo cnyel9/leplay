@@ -1,5 +1,7 @@
 package com.leplay.app
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -93,7 +95,7 @@ private fun AnonHomeBanner(onSignIn: () -> Unit, onSearch: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .background(c.surfaceContainerLow)
-            .clickable(onClick = onSignIn)
+            .pressable(onClick = onSignIn)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -138,28 +140,36 @@ fun HomeFilterChips(
     ) {
         items(HomeFilter.entries) { filter ->
             val isSelected = filter == selected
+            val chipBg by animateColorAsState(
+                targetValue = when {
+                    isSelected -> if (isDark || isAmoled) Color.White else Color.Black
+                    isAmoled -> Color(0xFF161616)
+                    isDark -> Color(0xFF272727)
+                    else -> Color(0xFFE5E5E5)
+                },
+                animationSpec = tween(180, easing = Motion.Emphasized),
+                label = "homeFilterBg",
+            )
+            val chipInk by animateColorAsState(
+                targetValue = when {
+                    isSelected -> if (isDark || isAmoled) Color.Black else Color.White
+                    isDark || isAmoled -> Color.White
+                    else -> Color(0xFF0F0F0F)
+                },
+                animationSpec = tween(180, easing = Motion.Emphasized),
+                label = "homeFilterInk",
+            )
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        when {
-                            isSelected -> if (isDark || isAmoled) Color.White else Color.Black
-                            isAmoled -> Color(0xFF161616)
-                            isDark -> Color(0xFF272727)
-                            else -> Color(0xFFE5E5E5)
-                        }
-                    )
+                    .background(chipBg)
                     .pressable(pressedScale = 0.94f) { onSelect(filter) }
                     .padding(horizontal = 14.dp, vertical = 7.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     filter.label,
-                    color = when {
-                        isSelected -> if (isDark || isAmoled) Color.Black else Color.White
-                        isDark || isAmoled -> Color.White
-                        else -> Color(0xFF0F0F0F)
-                    },
+                    color = chipInk,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                 )
@@ -634,7 +644,9 @@ fun LibraryScreen(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        items(history.take(20), key = { "h-" + it.id }) { video -> HistoryCard(video) { onOpen(video) } }
+                        items(history.take(20), key = { "h-" + it.id }) { video ->
+                            Box(if (GlassSettings.liteMode) Modifier else Modifier.animateItem()) { HistoryCard(video) { onOpen(video) } }
+                        }
                     }
                     lib.history.loading -> Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, strokeWidth = 4.dp, modifier = Modifier.size(28.dp))
@@ -676,7 +688,7 @@ fun LibraryScreen(
                     ) {
                         items(lib.channels, key = { "sub-" + it.id }) { ch ->
                             Column(
-                                modifier = Modifier
+                                modifier = (if (GlassSettings.liteMode) Modifier else Modifier.animateItem())
                                     .width(68.dp)
                                     .clickable { ch.url?.let(onOpenChannel) },
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -703,7 +715,7 @@ fun LibraryScreen(
                 PlaylistRef("LL", I18n.t("liked_videos", "Liked videos"), null, null),
             )
             items((pinned + lib.playlists).chunked(2), key = { row -> row.joinToString { it.id } }) { row ->
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row((if (GlassSettings.liteMode) Modifier else Modifier.animateItem()).padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     row.forEach { pl -> PlaylistTile(pl, Modifier.weight(1f)) { onOpenPlaylist(pl) } }
                     if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
@@ -1012,7 +1024,7 @@ fun SearchScreen(
                     LazyColumn(contentPadding = contentPadding) {
                         items(matchingHistory, key = { "hist-$it" }) { query ->
                             Row(
-                                modifier = Modifier
+                                modifier = (if (GlassSettings.liteMode) Modifier else Modifier.animateItem())
                                     .fillMaxWidth()
                                     .pressable {
                                         state.updateQuery(query)
@@ -1048,7 +1060,7 @@ fun SearchScreen(
                         }
                         items(nonHistorySuggestions, key = { "sug-$it" }) { suggestion ->
                             Row(
-                                modifier = Modifier
+                                modifier = (if (GlassSettings.liteMode) Modifier else Modifier.animateItem())
                                     .fillMaxWidth()
                                     .pressable {
                                         state.updateQuery(suggestion)
@@ -1120,7 +1132,7 @@ fun SearchScreen(
                         }
                         items(history, key = { "hist-$it" }) { query ->
                             Row(
-                                modifier = Modifier
+                                modifier = (if (GlassSettings.liteMode) Modifier else Modifier.animateItem())
                                     .fillMaxWidth()
                                     .pressable {
                                         state.updateQuery(query)
@@ -1179,7 +1191,7 @@ fun SearchScreen(
                             SearchHistory.add(currentQuery)
                         }
                         onOpen(video)
-                    })
+                    }, modifier = if (GlassSettings.liteMode) Modifier else Modifier.animateItem())
                 }
             }
             }

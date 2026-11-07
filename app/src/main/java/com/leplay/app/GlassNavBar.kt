@@ -6,9 +6,13 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.HapticFeedbackConstants
 import android.view.View
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -428,6 +432,11 @@ fun RowScope.LiquidNavTab(
     val isLightTheme = !isDarkSurface && !isSystemInDarkTheme() && ThemeSettings.mode != "dark" && ThemeSettings.mode != "amoled"
     val contentColor = if (isLightTheme) Color.Black else Color.White
     val active = tab == Tab.Downloads && Downloads.busy
+    val labelColor by animateColorAsState(
+        targetValue = if (selected) contentColor else contentColor.copy(alpha = 0.72f),
+        animationSpec = tween(180, easing = Motion.Emphasized),
+        label = "navLabelColor",
+    )
 
     LiquidBottomTab(onClick = onClick) {
         Box(
@@ -442,12 +451,18 @@ fun RowScope.LiquidNavTab(
                     modifier = Modifier.size(26.dp)
                 )
             }
-            Icon(
-                if (selected) tab.selectedIcon else tab.icon,
-                contentDescription = tab.label,
-                tint = contentColor,
-                modifier = Modifier.size(if (active) 18.dp else 22.dp)
-            )
+            Crossfade(
+                targetState = selected,
+                animationSpec = if (GlassSettings.liteMode) snap() else tween(150, easing = Motion.Emphasized),
+                label = "navIcon",
+            ) { sel ->
+                Icon(
+                    if (sel) tab.selectedIcon else tab.icon,
+                    contentDescription = tab.label,
+                    tint = contentColor,
+                    modifier = Modifier.size(if (active) 18.dp else 22.dp)
+                )
+            }
         }
 
 
@@ -455,7 +470,7 @@ fun RowScope.LiquidNavTab(
             text = tab.label,
             modifier = Modifier.fillMaxWidth(),
             style = TextStyle(
-                color = contentColor,
+                color = labelColor,
                 fontSize = 11.sp,
                 letterSpacing = 0.sp,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,

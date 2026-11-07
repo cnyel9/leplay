@@ -115,6 +115,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -765,12 +766,17 @@ private fun AppearanceThemeContent(context: Context) {
                 "amoled" to I18n.t("theme_amoled", "AMOLED"),
             ).forEach { (mode, label) ->
                 val on = ThemeSettings.mode == mode
+                val chipBg by animateColorAsState(
+                    targetValue = if (on) c.primary else c.surfaceContainerHigh,
+                    animationSpec = tween(260, easing = Motion.Emphasized),
+                    label = "themeChipBg",
+                )
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .pressable { ThemeSettings.chooseMode(mode) }
                         .clip(RoundedCornerShape(14.dp))
-                        .background(if (on) c.primary else c.surfaceContainerHigh)
+                        .background(chipBg)
                         .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -830,6 +836,34 @@ private fun SettingsClickRow(
             tint = c.onSurfaceVariant.copy(alpha = 0.6f),
             modifier = Modifier.size(20.dp),
         )
+    }
+}
+
+@Composable
+private fun ScaleInCheckBadge(selected: Boolean, size: Dp, iconSize: Dp) {
+    val c = MaterialTheme.colorScheme
+    AnimatedVisibility(
+        visible = selected,
+        enter = if (GlassSettings.liteMode) fadeIn(snap()) else scaleIn(spring(dampingRatio = 0.62f, stiffness = 420f)) + fadeIn(tween(150, easing = Motion.Emphasized)),
+        exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(120, easing = Motion.Emphasized)),
+    ) {
+        Box(
+            modifier = Modifier.size(size).clip(CircleShape).background(c.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Rounded.Check, contentDescription = I18n.t("selected", "Selected"), tint = c.onPrimary, modifier = Modifier.size(iconSize))
+        }
+    }
+}
+
+@Composable
+private fun ScaleInCheckIcon(visible: Boolean, size: Dp, tint: Color) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = if (GlassSettings.liteMode) fadeIn(snap()) else scaleIn(spring(dampingRatio = 0.62f, stiffness = 420f)) + fadeIn(tween(150, easing = Motion.Emphasized)),
+        exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(120, easing = Motion.Emphasized)),
+    ) {
+        Icon(Icons.Rounded.Check, contentDescription = null, tint = tint, modifier = Modifier.size(size))
     }
 }
 
@@ -911,22 +945,7 @@ private fun QualitySelectionDialog(
                                 color = c.onSurfaceVariant,
                             )
                         }
-                        if (selected) {
-                            Box(
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .clip(CircleShape)
-                                    .background(c.primary),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Rounded.Check,
-                                    contentDescription = I18n.t("selected", "Selected"),
-                                    tint = c.onPrimary,
-                                    modifier = Modifier.size(14.dp),
-                                )
-                            }
-                        }
+                        ScaleInCheckBadge(selected, 22.dp, 14.dp)
                     }
                     Spacer(Modifier.height(4.dp))
                 }
@@ -959,22 +978,7 @@ private fun QualitySelectionDialog(
                             fontSize = 13.5.sp,
                             color = if (isChosen) c.primary else c.onSurface,
                         )
-                        if (isChosen) {
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(CircleShape)
-                                    .background(c.primary),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Rounded.Check,
-                                    contentDescription = I18n.t("selected", "Selected"),
-                                    tint = c.onPrimary,
-                                    modifier = Modifier.size(13.dp),
-                                )
-                            }
-                        }
+                        ScaleInCheckBadge(isChosen, 20.dp, 13.dp)
                     }
                     Spacer(Modifier.height(3.dp))
                 }
@@ -1062,9 +1066,7 @@ private fun DownloadFolderSelectionDialog(
                             color = c.onSurfaceVariant,
                         )
                     }
-                    if (isDefault) {
-                        Icon(Icons.Rounded.Check, null, tint = c.primary, modifier = Modifier.size(18.dp))
-                    }
+                    ScaleInCheckIcon(visible = isDefault, size = 18.dp, tint = c.primary)
                 }
 
                 Spacer(Modifier.height(6.dp))
@@ -1100,9 +1102,7 @@ private fun DownloadFolderSelectionDialog(
                             color = c.onSurfaceVariant,
                         )
                     }
-                    if (isMusic) {
-                        Icon(Icons.Rounded.Check, null, tint = c.primary, modifier = Modifier.size(18.dp))
-                    }
+                    ScaleInCheckIcon(visible = isMusic, size = 18.dp, tint = c.primary)
                 }
 
                 Spacer(Modifier.height(6.dp))
@@ -1139,9 +1139,7 @@ private fun DownloadFolderSelectionDialog(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    if (isCustom) {
-                        Icon(Icons.Rounded.Check, null, tint = c.primary, modifier = Modifier.size(18.dp))
-                    }
+                    ScaleInCheckIcon(visible = isCustom, size = 18.dp, tint = c.primary)
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -1242,7 +1240,12 @@ private fun GeneralModificationContent(context: Context) {
             onCheckedChange = SponsorBlock::updateEnabled,
         )
 
-        if (SponsorBlock.enabled) {
+        AnimatedVisibility(
+            visible = SponsorBlock.enabled,
+            enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(180)) + expandVertically(tween(260)),
+            exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(140)) + shrinkVertically(tween(200)),
+        ) {
+            Column {
             HorizontalDivider(color = c.onSurface.copy(alpha = 0.08f))
             Column(modifier = Modifier.padding(vertical = 6.dp)) {
                 SponsorBlock.Category.entries.forEach { category ->
@@ -1269,12 +1272,17 @@ private fun GeneralModificationContent(context: Context) {
                         ) {
                             SponsorBlock.Action.entries.forEach { action ->
                                 val on = action == current
+                                val chipBg by animateColorAsState(
+                                    targetValue = if (on) c.secondaryContainer else Color.Transparent,
+                                    animationSpec = tween(260, easing = Motion.Emphasized),
+                                    label = "sbSettingsChipBg",
+                                )
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
                                         .pressable { SponsorBlock.setAction(category, action) }
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(if (on) c.secondaryContainer else Color.Transparent)
+                                        .background(chipBg)
                                         .padding(horizontal = 6.dp, vertical = 6.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
@@ -1289,6 +1297,7 @@ private fun GeneralModificationContent(context: Context) {
                         }
                     }
                 }
+            }
             }
         }
 
@@ -1747,7 +1756,7 @@ private fun LanguageContent(context: Context, onLanguageSelected: () -> Unit) {
             items(filteredLanguages, key = { it.code }) { item ->
                 val isSelected = currentCode.equals(item.code, ignoreCase = true)
                 Row(
-                    modifier = Modifier
+                    modifier = (if (GlassSettings.liteMode) Modifier else Modifier.animateItem())
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
                         .background(if (isSelected) c.primary.copy(alpha = 0.14f) else c.surfaceContainerLow.copy(alpha = 0.5f))
@@ -1810,6 +1819,12 @@ private fun SettingsProfileCard(
     val accounts = Account.accounts
     val activeId = Account.activeAccountId
     var expanded by remember { mutableStateOf(false) }
+    val chevronReduced = rememberReducedMotion() || GlassSettings.liteMode
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 90f else 0f,
+        animationSpec = if (chevronReduced) tween(0) else tween(220, easing = Motion.Emphasized),
+        label = "profileChevron",
+    )
 
     Column(
         modifier = Modifier
@@ -1910,7 +1925,7 @@ private fun SettingsProfileCard(
                         .padding(4.dp)
                         .size(18.dp)
                         .graphicsLayer {
-                            rotationZ = if (expanded) 90f else 0f
+                            rotationZ = chevronRotation
                         },
                 )
             }

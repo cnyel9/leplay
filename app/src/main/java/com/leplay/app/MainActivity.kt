@@ -932,7 +932,11 @@ fun LePlayTubeApp() {
             }
         }
 
-        if (signingIn) {
+        AnimatedVisibility(
+            visible = signingIn,
+            enter = if (reduced) fadeIn(snap()) else slideInHorizontally(tween(340, easing = Motion.Emphasized)) { it } + fadeIn(tween(120, easing = Motion.Emphasized)),
+            exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220, easing = Motion.Emphasized)),
+        ) {
             SignInScreen(
                 onDone = {
                     signingIn = false
