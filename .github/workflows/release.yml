@@ -1,0 +1,66 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          validate-wrappers: false
+
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
+
+      - name: Build Release APK
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Prepare APK Artifact
+        run: cp app/build/outputs/apk/release/app-release.apk LePlay.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LePlay
+          path: LePlay.apk
+
+      - name: Set Release Title
+        id: release_title
+        if: startsWith(github.ref, 'refs/tags/')
+        run: echo "title=LePlay ${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.release_title.outputs.title }}
+          files: LePlay.apk
+          body: |
+            LePlay release.
+
+            - Ad-free YouTube and YouTube Music playback with a Liquid Glass UI
+            - Personalised Shorts feed and synced lyrics
+            - High-quality downloads up to 4K HDR
+            - Background playback, Picture-in-Picture, and Android TV mode
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
