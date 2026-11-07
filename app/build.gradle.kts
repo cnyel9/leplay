@@ -11,8 +11,8 @@ android {
         applicationId = "com.leplay.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 110
-        versionName = "0.0.6-test4"
+        versionCode = 111
+        versionName = "0.0.6"
     }
 
     signingConfigs {
