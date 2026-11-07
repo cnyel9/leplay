@@ -861,14 +861,14 @@ fun ShortsScreen(
                             enter = if (GlassSettings.liteMode) {
                                 fadeIn(snap())
                             } else {
-                                fadeIn(tween(220, Motion.Emphasized)) +
-                                    slideInVertically(tween(Motion.PageRiseMs, Motion.Emphasized)) { it / 3 }
+                                fadeIn(tween(220, easing = Motion.Emphasized)) +
+                                    slideInVertically(tween(Motion.PageRiseMs, easing = Motion.Emphasized)) { it / 3 }
                             },
                             exit = if (GlassSettings.liteMode) {
                                 fadeOut(snap())
                             } else {
-                                fadeOut(tween(160, Motion.Emphasized)) +
-                                    slideOutVertically(tween(280, Motion.Emphasized)) { it / 3 }
+                                fadeOut(tween(160, easing = Motion.Emphasized)) +
+                                    slideOutVertically(tween(280, easing = Motion.Emphasized)) { it / 3 }
                             },
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
@@ -1163,14 +1163,14 @@ private fun ShortsRail(
             enter = if (GlassSettings.liteMode) {
                 fadeIn(snap())
             } else {
-                fadeIn(tween(180, Motion.Emphasized)) +
-                    expandVertically(tween(260, Motion.Emphasized), expandFrom = Alignment.Bottom)
+                fadeIn(tween(180, easing = Motion.Emphasized)) +
+                    expandVertically(tween(260, easing = Motion.Emphasized), expandFrom = Alignment.Bottom)
             },
             exit = if (GlassSettings.liteMode) {
                 fadeOut(snap())
             } else {
-                fadeOut(tween(160, Motion.Emphasized)) +
-                    shrinkVertically(tween(260, Motion.Emphasized), shrinkTowards = Alignment.Bottom)
+                fadeOut(tween(160, easing = Motion.Emphasized)) +
+                    shrinkVertically(tween(260, easing = Motion.Emphasized), shrinkTowards = Alignment.Bottom)
             },
         ) {
             Column(
@@ -1203,14 +1203,14 @@ private fun ShortsRail(
             enter = if (GlassSettings.liteMode) {
                 fadeIn(snap())
             } else {
-                fadeIn(tween(180, Motion.Emphasized)) +
-                    expandVertically(tween(260, Motion.Emphasized), expandFrom = Alignment.Bottom)
+                fadeIn(tween(180, easing = Motion.Emphasized)) +
+                    expandVertically(tween(260, easing = Motion.Emphasized), expandFrom = Alignment.Bottom)
             },
             exit = if (GlassSettings.liteMode) {
                 fadeOut(snap())
             } else {
-                fadeOut(tween(160, Motion.Emphasized)) +
-                    shrinkVertically(tween(260, Motion.Emphasized), shrinkTowards = Alignment.Bottom)
+                fadeOut(tween(160, easing = Motion.Emphasized)) +
+                    shrinkVertically(tween(260, easing = Motion.Emphasized), shrinkTowards = Alignment.Bottom)
             },
         ) {
             Column(

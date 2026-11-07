@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -664,7 +665,7 @@ private fun ChatPanelScaffold(
         fun dragBy(dy: Float): Float {
             val before = height.value
             val after = (before - dy).coerceIn(partialPx * 0.25f, fullPx)
-            scope.launch { height.snapTo(after) }
+            scope.launch(start = CoroutineStart.UNDISPATCHED) { height.snapTo(after) }
             return before - after
         }
         fun settle(velocity: Float) {
@@ -702,7 +703,7 @@ private fun ChatPanelScaffold(
                         orientation = Orientation.Vertical,
                         onDragStopped = { v -> settle(v) },
                     )
-                    .padding(top = 10.dp, bottom = 8.dp),
+                    .padding(top = 14.dp, bottom = 12.dp),
                 Alignment.Center,
             ) {
                 Box(Modifier.size(width = 36.dp, height = 4.dp).clip(CircleShape).background(c.onSurfaceVariant.copy(alpha = 0.45f)))

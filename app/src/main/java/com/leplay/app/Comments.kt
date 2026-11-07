@@ -376,7 +376,7 @@ fun CommentsPanel(
         fun dragBy(dy: Float): Float {
             val before = height.value
             val after = (before - dy).coerceIn(partialPx * 0.25f, fullPx)
-            scope.launch { height.snapTo(after) }
+            scope.launch(start = CoroutineStart.UNDISPATCHED) { height.snapTo(after) }
             return before - after
         }
         fun settle(velocity: Float) {
