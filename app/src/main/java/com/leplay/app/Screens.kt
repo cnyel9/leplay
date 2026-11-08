@@ -1,8 +1,12 @@
 package com.leplay.app
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
@@ -28,6 +32,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -54,6 +59,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +77,7 @@ import androidx.compose.ui.input.key.type
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
@@ -835,6 +842,11 @@ private fun TextLink(text: String, onClick: () -> Unit) {
 
 
 
+/** Sort order for video search results. Relevance is the classic
+ *  NewPipe path; Latest and Popular go through InnerTube with a
+ *  server-side sort token. */
+enum class SearchSort { Relevance, Latest, Popular }
+
 @Stable
 class SearchState(private val scope: CoroutineScope) {
     var query by mutableStateOf("")
@@ -853,6 +865,10 @@ class SearchState(private val scope: CoroutineScope) {
         private set
     var generation by mutableStateOf(0)
         private set
+    var sort by mutableStateOf(SearchSort.Relevance)
+        private set
+    private var nextToken: String? = null
+    private var loadingMore = false
     private var job: Job? = null
     private var suggestJob: Job? = null
 
@@ -866,6 +882,8 @@ class SearchState(private val scope: CoroutineScope) {
         suggestionsLoading = false
         loading = false
         error = null
+        sort = SearchSort.Relevance
+        nextToken = null
     }
 
     fun updateQuery(text: String) {
@@ -903,12 +921,175 @@ class SearchState(private val scope: CoroutineScope) {
         submitted = q
         loading = true
         error = null
+        nextToken = null
         job?.cancel()
         job = scope.launch {
-            runCatching { YouTube.search(q) }
-                .onSuccess { results = it; generation++ }
-                .onFailure { error = YouTube.friendlyError(it) }
+            when (sort) {
+                // The classic path, unchanged: NewPipe relevance search.
+                SearchSort.Relevance -> runCatching { YouTube.search(q) }
+                    .onSuccess { results = it; generation++ }
+                    .onFailure { error = YouTube.friendlyError(it) }
+                // Server-side most-viewed-first; the continuation
+                // token carries the sort to later pages.
+                SearchSort.Popular -> runCatching { InnerTube.searchVideos(q, SEARCH_PARAMS_POPULAR) }
+                    .onSuccess { page ->
+                        results = page.videos
+                        nextToken = page.next
+                        generation++
+                    }
+                    .onFailure { error = YouTube.friendlyError(it) }
+                // The server's upload-date sort only tilts relevance
+                // towards recency, so up to 3 pages are collected and
+                // re-ranked client-side by parsed upload age to make
+                // "Latest" honest inside the loaded window. Pages
+                // appended later via loadMore stay in server order.
+                SearchSort.Latest -> runCatching {
+                    val collected = ArrayList<VideoItem>()
+                    var page = InnerTube.searchVideos(q, SEARCH_PARAMS_LATEST)
+                    var token: String? = page.next
+                    collected.addAll(page.videos)
+                    var fetched = 1
+                    while (collected.size < 48 && token != null && fetched < 3) {
+                        page = InnerTube.searchVideosPage(token)
+                        collected.addAll(page.videos)
+                        token = page.next
+                        fetched++
+                    }
+                    collected to token
+                }.onSuccess { (collected, token) ->
+                    results = collected.sortedBy { uploadAgeMinutes(it.uploaded) }
+                    nextToken = token
+                    generation++
+                }.onFailure { error = YouTube.friendlyError(it) }
+            }
             loading = false
+        }
+    }
+
+    /** Switch the result sort and re-run the stored submitted query
+     *  under it. A no-op when nothing was ever submitted. */
+    fun setSort(s: SearchSort) {
+        if (s == sort) return
+        sort = s
+        nextToken = null
+        if (submitted.isBlank()) return
+        updateQuery(submitted)
+        submit()
+    }
+
+    /** Append the next page of a sorted (InnerTube) search. Raw
+     *  server order, deduped by id; never re-ranked, so the Latest
+     *  re-rank window stays the initial load only. */
+    fun loadMore() {
+        if (sort == SearchSort.Relevance || loading || loadingMore) return
+        val token = nextToken ?: return
+        loadingMore = true
+        scope.launch {
+            runCatching { InnerTube.searchVideosPage(token) }
+                .onSuccess { page ->
+                    val seen = results.mapTo(HashSet()) { it.id }
+                    val fresh = page.videos.filter { it.id !in seen }
+                    if (fresh.isNotEmpty()) results = results + fresh
+                    nextToken = page.next
+                }
+            loadingMore = false
+        }
+    }
+
+    private companion object {
+        // InnerTube search "params" tokens (raw base64 in the JSON
+        // params field): sort by view count / sort by upload date.
+        const val SEARCH_PARAMS_POPULAR = "CAMSAhAB8AEB"
+        const val SEARCH_PARAMS_LATEST = "CAISAhAB8AEB"
+    }
+}
+
+private val UPLOAD_AGE_PATTERN = Regex(
+    """(\d+)\s*(detik|menit|jam|hari|minggu|bulan|tahun|seconds?|minutes?|hours?|days?|weeks?|months?|years?)""",
+    RegexOption.IGNORE_CASE,
+)
+
+/** Approximate age in minutes of an upload label ("3 days ago",
+ *  "3 hari yang lalu", "Streamed 11 hours ago"), searched not
+ *  anchored so prefixes are fine. Unparseable labels and "Live"
+ *  sort last via [Long.MAX_VALUE]. */
+private fun uploadAgeMinutes(uploaded: String?): Long {
+    val text = uploaded ?: return Long.MAX_VALUE
+    val match = UPLOAD_AGE_PATTERN.find(text) ?: return Long.MAX_VALUE
+    val n = match.groupValues[1].toLongOrNull() ?: return Long.MAX_VALUE
+    val unit = match.groupValues[2].lowercase()
+    val minutes = when {
+        unit.startsWith("detik") || unit.startsWith("second") -> 0L
+        unit.startsWith("menit") || unit.startsWith("minute") -> 1L
+        unit.startsWith("jam") || unit.startsWith("hour") -> 60L
+        unit.startsWith("hari") || unit.startsWith("day") -> 1_440L
+        unit.startsWith("minggu") || unit.startsWith("week") -> 10_080L
+        unit.startsWith("bulan") || unit.startsWith("month") -> 43_200L
+        unit.startsWith("tahun") || unit.startsWith("year") -> 525_600L
+        else -> return Long.MAX_VALUE
+    }
+    return n * minutes
+}
+
+@Composable
+fun SearchSortChips(selected: SearchSort, onSelect: (SearchSort) -> Unit, modifier: Modifier = Modifier) {
+    val isDark = isDarkTheme()
+    val isAmoled = ThemeSettings.mode == "amoled"
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        SearchSort.entries.forEach { sort ->
+            val isSelected = sort == selected
+            val background by animateColorAsState(
+                targetValue = when {
+                    isSelected -> if (isDark || isAmoled) Color.White else Color.Black
+                    isAmoled -> Color(0xFF161616)
+                    isDark -> Color(0xFF272727)
+                    else -> Color(0xFFE5E5E5)
+                },
+                animationSpec = tween(220, easing = Motion.Emphasized),
+                label = "searchSortBackground",
+            )
+            val foreground by animateColorAsState(
+                targetValue = when {
+                    isSelected -> if (isDark || isAmoled) Color.Black else Color.White
+                    isDark || isAmoled -> Color.White
+                    else -> Color(0xFF0F0F0F)
+                },
+                animationSpec = tween(180, easing = Motion.Emphasized),
+                label = "searchSortForeground",
+            )
+            val scale by animateFloatAsState(
+                targetValue = if (isSelected) 1f else 0.94f,
+                animationSpec = spring(dampingRatio = 0.7f, stiffness = 700f),
+                label = "searchSortScale",
+            )
+            Box(
+                modifier = Modifier
+                    .graphicsLayer { scaleX = scale; scaleY = scale }
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(background)
+                    .pressable(pressedScale = 0.94f) { onSelect(sort) }
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    when (sort) {
+                        SearchSort.Relevance -> I18n.t("sort_relevance", "Relevance")
+                        SearchSort.Latest -> I18n.t("sort_latest", "Latest")
+                        SearchSort.Popular -> I18n.t("sort_popular", "Popular")
+                    },
+                    color = foreground,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            }
         }
     }
 }
@@ -1207,6 +1388,26 @@ fun SearchScreen(
                 // order never changes when the width class flips (rotation).
                 val gridList = rememberLazyGridState()
                 LaunchedEffect(state.generation) { if (wideSearch) gridList.scrollToItem(0) }
+                // Near-end paging for the sorted modes (Relevance has
+                // no continuation here and loadMore() no-ops for it).
+                // Effects for both containers are declared before the
+                // width branch, mirroring the generation effects.
+                val listNearEnd by remember {
+                    derivedStateOf {
+                        val info = list.layoutInfo
+                        val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                        info.totalItemsCount > 0 && last >= info.totalItemsCount - 4
+                    }
+                }
+                LaunchedEffect(listNearEnd, state.results.size) { if (listNearEnd) state.loadMore() }
+                val gridNearEnd by remember {
+                    derivedStateOf {
+                        val info = gridList.layoutInfo
+                        val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                        info.totalItemsCount > 0 && last >= info.totalItemsCount - 4
+                    }
+                }
+                LaunchedEffect(gridNearEnd, state.results.size) { if (gridNearEnd) state.loadMore() }
                 if (wideSearch) {
                     // Wide / TV: results as a card grid instead of one
                     // stretched column. Phone keeps the list below.
@@ -1219,6 +1420,9 @@ fun SearchScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     ) {
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "searchSort") {
+                            SearchSortChips(state.sort, onSelect = { state.setSort(it) })
+                        }
                         gridItems(state.results, key = { it.id }) { video ->
                             VideoCard(video, onClick = {
                                 val currentQuery = state.submitted.trim().ifEmpty { state.query.trim() }
@@ -1231,6 +1435,9 @@ fun SearchScreen(
                     }
                 } else {
                 LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
+                item(key = "searchSort") {
+                    SearchSortChips(state.sort, onSelect = { state.setSort(it) })
+                }
                 items(state.results, key = { it.id }) { video ->
                     VideoCard(video, onClick = {
                         val currentQuery = state.submitted.trim().ifEmpty { state.query.trim() }

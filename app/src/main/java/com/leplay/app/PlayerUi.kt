@@ -203,6 +203,34 @@ fun PlayerScreen(
     val interactive = state.expanded || morph.dragging
     val showDetails by remember { derivedStateOf { state.expanded || morph.dragging || morph.progress.value > DetailsFadeStart } }
     val details = state.details
+    // Related-list scroll states and near-end triggers for both player
+    // layouts, hoisted before the layout branch so hook order never
+    // changes when the width class flips (rotation). Each effect asks
+    // the state for the next watch-next page; the state itself guards
+    // music mode, exhaustion and in-flight fetches.
+    val wideRelatedList = rememberLazyListState()
+    val portraitRelatedList = rememberLazyListState()
+    val wideRelatedNearEnd by remember {
+        derivedStateOf {
+            val info = wideRelatedList.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            info.totalItemsCount > 0 && last >= info.totalItemsCount - 4
+        }
+    }
+    LaunchedEffect(wideRelatedNearEnd, state.displayRelated.size) {
+        if (wideRelatedNearEnd && state.displayRelated.isNotEmpty() && !state.loading) state.loadMoreRelated()
+    }
+    val portraitRelatedNearEnd by remember {
+        derivedStateOf {
+            val relatedCount = state.displayRelated.size
+            val info = portraitRelatedList.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            relatedCount > 0 && last >= (relatedCount + 1) - 4
+        }
+    }
+    LaunchedEffect(portraitRelatedNearEnd, state.displayRelated.size) {
+        if (portraitRelatedNearEnd && state.displayRelated.isNotEmpty() && !state.loading) state.loadMoreRelated()
+    }
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     var descriptionOpen by remember(item.id) { mutableStateOf(false) }
@@ -362,6 +390,7 @@ fun PlayerScreen(
                 ) {
                     Spacer(Modifier.height(top))
                     LazyColumn(
+                        state = wideRelatedList,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = bottom + 32.dp),
                     ) {
@@ -370,6 +399,13 @@ fun PlayerScreen(
                         if (related.isNotEmpty()) {
                             items(related, key = { "wide-rel-" + it.id }) { video ->
                                 Box((if (GlassSettings.liteMode) Modifier else Modifier.animateItem()).padding(horizontal = 14.dp, vertical = 2.dp)) { VideoRow(video, onClick = { onOpen(video) }) }
+                            }
+                            if (state.relatedLoadingMore) {
+                                item(key = "wide-rel-loading") {
+                                    Box(Modifier.fillMaxWidth().padding(28.dp), Alignment.Center) {
+                                        CircularProgressIndicator(color = c.primary, strokeWidth = 4.dp, modifier = Modifier.size(32.dp))
+                                    }
+                                }
                             }
                         } else if (state.loading) {
                             item(key = "wideLoading") {
@@ -393,6 +429,7 @@ fun PlayerScreen(
 
             if (!showDetails) Spacer(Modifier.weight(1f)) else
             LazyColumn(
+                state = portraitRelatedList,
                 modifier = Modifier
                     .weight(1f)
                     .zIndex(0f)
@@ -417,6 +454,13 @@ fun PlayerScreen(
                     item(key = "moreTitle") { SectionTitle(I18n.t("more_videos", "More videos")) }
                     items(related, key = { "rel-" + it.id }) { video ->
                         Box((if (GlassSettings.liteMode) Modifier else Modifier.animateItem()).padding(horizontal = 20.dp)) { VideoRow(video, onClick = { onOpen(video) }) }
+                    }
+                    if (state.relatedLoadingMore) {
+                        item(key = "rel-loading") {
+                            Box(Modifier.fillMaxWidth().padding(28.dp), Alignment.Center) {
+                                CircularProgressIndicator(color = c.primary, strokeWidth = 4.dp, modifier = Modifier.size(32.dp))
+                            }
+                        }
                     }
                 } else if (state.loading) {
                     item(key = "loading") {

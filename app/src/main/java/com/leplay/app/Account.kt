@@ -2026,6 +2026,59 @@ object InnerTube {
     suspend fun history(next: String? = null) = browse("FEhistory", next)
     suspend fun playlist(id: String, next: String? = null) = browse("VL$id", next)
 
+    /** Harvest of one watch-next / search harvest pass: video renderers
+     *  and lockups become items, the first continuation token found
+     *  inside the walked tree becomes the next page. Deduped by id,
+     *  server order preserved. */
+    private fun harvestFeed(root: JSONObject): FeedPage {
+        val videos = LinkedHashMap<String, VideoItem>()
+        var next: String? = null
+        root.walk { key, obj ->
+            when (key) {
+                "lockupViewModel" -> parseLockup(obj)?.let { videos.putIfAbsent(it.id, it) }
+                "compactVideoRenderer", "videoRenderer" ->
+                    parseVideoRenderer(obj)?.let { videos.putIfAbsent(it.id, it) }
+                "continuationItemRenderer", "continuationItemViewModel" ->
+                    if (next == null) next = obj.collectStrings("token").firstOrNull()
+            }
+        }
+        return FeedPage(videos.values.toList(), next)
+    }
+
+    /** First page of the watch-next "more videos" list. Only the
+     *  secondaryResults subtree is walked: the same response carries an
+     *  unrelated comments-section continuation elsewhere, and its token
+     *  must never be taken as the related page token. */
+    suspend fun relatedFirstPage(videoId: String): FeedPage = withContext(Dispatchers.IO) {
+        val root = postAny("next", JSONObject().put("videoId", videoId))
+        val subtree = root.optJSONObject("contents")
+            ?.optJSONObject("twoColumnWatchNextResults")
+            ?.optJSONObject("secondaryResults")
+            ?.optJSONObject("secondaryResults")
+            ?: return@withContext FeedPage(emptyList(), null)
+        harvestFeed(subtree)
+    }
+
+    /** Continuation page of the watch-next related list. Continuation
+     *  responses wrap the new items in a top-level continuationContents
+     *  object; when it is absent the whole tree is walked. */
+    suspend fun relatedNextPage(token: String): FeedPage = withContext(Dispatchers.IO) {
+        val root = postAny("next", JSONObject().put("continuation", token))
+        harvestFeed(root.optJSONObject("continuationContents") ?: root)
+    }
+
+    /** Video search with a raw server-side sort/filter params token.
+     *  The sort lives in the params of the first request only;
+     *  continuation tokens already encode it, so pages are fetched
+     *  with the token alone. */
+    suspend fun searchVideos(query: String, params: String): FeedPage = withContext(Dispatchers.IO) {
+        parseFeed(postAny("search", JSONObject().put("query", query).put("params", params)))
+    }
+
+    suspend fun searchVideosPage(token: String): FeedPage = withContext(Dispatchers.IO) {
+        parseFeed(postAny("search", JSONObject().put("continuation", token)))
+    }
+
 
     suspend fun channelAvatarUrl(channelId: String): String? = withContext(Dispatchers.IO) {
         val root = postAny("browse", JSONObject().put("browseId", channelId))

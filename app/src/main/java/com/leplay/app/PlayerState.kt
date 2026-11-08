@@ -152,7 +152,7 @@ class PlayerState(private val scope: CoroutineScope) {
     }
 
     fun hasNextVideo(): Boolean =
-        queue.isNotEmpty() || details?.related?.any { it.id != current?.id } == true
+        queue.isNotEmpty() || displayRelated.any { it.id != current?.id }
 
     /** Next-video button: the play queue first, then the same up-next pick
      *  autoplay would make. Video mode only; a live stream has no "next". */
@@ -319,10 +319,39 @@ class PlayerState(private val scope: CoroutineScope) {
     private var musicQueueGeneration = 0
     private var refillInFlight = false
 
-    /** Related list diversified for display only (near-duplicate titles
-     *  dropped, max 2 per channel). Autoplay keeps using details.related. */
+    /** Related list diversified for display (near-duplicate titles
+     *  dropped, max 2 per channel) with home-feed items interleaved.
+     *  Since 0.0.7-test3 this displayed list is also the source of the
+     *  video up-next pick, so what the user sees is what plays next. */
     var displayRelated by mutableStateOf<List<VideoItem>>(emptyList())
         private set
+
+    /** Watch-next continuation token for paging [displayRelated]; null
+     *  until the details land (or a first page is lazily fetched). */
+    var relatedContinuation by mutableStateOf<String?>(null)
+        private set
+
+    /** A related page fetch is in flight. */
+    var relatedLoadingMore by mutableStateOf(false)
+        private set
+
+    /** No more related pages exist for the current video. */
+    var relatedExhausted by mutableStateOf(false)
+        private set
+
+    /** Bumped on every show() so a stale page fetch from a previous
+     *  video can never append to the new video's list. */
+    private var relatedGen = 0
+    private var relatedJob: Job? = null
+    private var relatedLazyTokenTried = false
+
+    /** Persistent dedupe state across related pages: token sets of
+     *  everything kept so far (seeded with the playing title), per
+     *  channel counts over the kept related entries, and the ids
+     *  already on display. */
+    private val relatedKeptTokens = ArrayList<Set<String>>()
+    private val relatedChannelCounts = HashMap<String, Int>()
+    private val relatedShownIds = HashSet<String>()
 
     fun open(item: VideoItem, expand: Boolean = true) {
         isMusicMode = false
@@ -520,6 +549,15 @@ class PlayerState(private val scope: CoroutineScope) {
         if (isMusicMode) RecentMusic.record(item)
         details = null
         displayRelated = emptyList()
+        relatedContinuation = null
+        relatedLoadingMore = false
+        relatedExhausted = false
+        relatedLazyTokenTried = false
+        relatedJob?.cancel()
+        relatedGen++
+        relatedKeptTokens.clear()
+        relatedChannelCounts.clear()
+        relatedShownIds.clear()
         error = null
         firstFrameRendered = false
         videoAspect = 16f / 9f
@@ -570,7 +608,19 @@ class PlayerState(private val scope: CoroutineScope) {
                 .onSuccess { d ->
                     Log.i("LePlayTime", "details +${android.os.SystemClock.elapsedRealtime() - openedAt}ms")
                     details = d
-                    displayRelated = interleaveFeed(diversifyRelated(d.related, item), item)
+                    val collapsedRelated = diversifyRelated(d.related, item)
+                    displayRelated = interleaveFeed(collapsedRelated, item)
+                    // Seed the cross-page dedupe with page 1 so later
+                    // pages filter against everything already shown.
+                    relatedKeptTokens.add(titleTokens(item.title))
+                    collapsedRelated.forEach { entry ->
+                        relatedKeptTokens.add(titleTokens(entry.title))
+                        val channelKey = entry.channel.lowercase()
+                        relatedChannelCounts[channelKey] = relatedChannelCounts.getOrDefault(channelKey, 0) + 1
+                    }
+                    displayRelated.forEach { relatedShownIds.add(it.id) }
+                    relatedShownIds.add(item.id)
+                    relatedContinuation = d.relatedNext
                     // Pre-resolve the likely next streams in the background
                     // so switching tracks does not pay the full lookup cost.
                     val nextIds = if (isMusicMode) {
@@ -578,7 +628,7 @@ class PlayerState(private val scope: CoroutineScope) {
                     } else {
                         listOfNotNull(
                             queue.firstOrNull()?.id,
-                            pickUpNextFrom(d.related.filter { it.id != item.id }, d.item)?.id,
+                            pickDisplayedNext(displayRelated)?.id,
                         )
                     }
                     nextIds.distinct().forEach { id -> if (id != item.id) StreamCache.prefetch(id) }
@@ -787,8 +837,10 @@ class PlayerState(private val scope: CoroutineScope) {
      *  collapsed related list, 1 feed item after every 4 related items,
      *  at most 6 inserts, so "Video lainnya" is not a wall of near
      *  duplicates. Snapshot only via [HomeFeedHooks]; an empty snapshot
-     *  leaves the list untouched. Never touches details.related, so
-     *  autoplay picks are unaffected. */
+     *  leaves the list untouched. Never touches details.related. The
+     *  interleaved result is what autoplay now picks from, and pages
+     *  appended later are not interleaved again (the insert cap stays
+     *  at the page-1 total of 6). */
     private fun interleaveFeed(collapsed: List<VideoItem>, currentItem: VideoItem): List<VideoItem> {
         if (collapsed.isEmpty()) return collapsed
         val feed = HomeFeedHooks.provider?.invoke().orEmpty()
@@ -813,11 +865,16 @@ class PlayerState(private val scope: CoroutineScope) {
         return out
     }
 
-    /** The video up-next pick: a video from the same channel first, else
-     *  the first related entry. [related] must already exclude the current
-     *  video. Shared by autoplay and the next-item prefetch. */
-    private fun pickUpNextFrom(related: List<VideoItem>, curr: VideoItem): VideoItem? =
-        related.firstOrNull { it.channel.equals(curr.channel, ignoreCase = true) } ?: related.firstOrNull()
+    /** The one video up-next pick, shared by autoplay and the next-item
+     *  prefetch so the two can never diverge: the first entry of the
+     *  displayed list that is neither the current video nor one already
+     *  played this session; if that filter empties the list, the first
+     *  entry that is not the current video; otherwise null. */
+    private fun pickDisplayedNext(list: List<VideoItem>): VideoItem? {
+        val currId = current?.id ?: return null
+        return list.firstOrNull { it.id != currId && playedHistory.none { played -> played.id == it.id } }
+            ?: list.firstOrNull { it.id != currId }
+    }
 
     private fun autoPlayNext() {
         val curr = current ?: return
@@ -827,9 +884,7 @@ class PlayerState(private val scope: CoroutineScope) {
             autoPlayNextMusic()
             return
         }
-        val relList = details?.related.orEmpty().filter { it.id != currId }
-
-        val next = pickUpNextFrom(relList, curr)
+        val next = pickDisplayedNext(displayRelated)
         if (next != null) {
             actionMessage = I18n.t("up_next", "Up next: {title}").replace("{title}", next.title)
             open(next, expand = expanded)
@@ -837,14 +892,77 @@ class PlayerState(private val scope: CoroutineScope) {
             scope.launch {
                 runCatching { YouTube.details(currId) }
                     .onSuccess { d ->
-                        val list = d.related.filter { it.id != currId }
-                        val rel = pickUpNextFrom(list, curr)
+                        val disp = interleaveFeed(diversifyRelated(d.related, curr), curr)
+                        val rel = pickDisplayedNext(disp)
                         if (rel != null) {
                             actionMessage = I18n.t("up_next", "Up next: {title}").replace("{title}", rel.title)
                             open(rel, expand = expanded)
                         }
                     }
             }
+        }
+    }
+
+    /** Fetch the next watch-next page and append its fresh entries to
+     *  the displayed related list. When the details carried no token
+     *  (the common NewPipe path), the first InnerTube page is fetched
+     *  lazily once, purely to obtain a token; its items are not
+     *  appended because the displayed page 1 came from NewPipe. Every
+     *  page is filtered with the same dedupe page 1 used, via the
+     *  persistent state seeded when the details landed. */
+    fun loadMoreRelated() {
+        if (isMusicMode) return
+        val owner = current ?: return
+        if (relatedLoadingMore || relatedExhausted || displayRelated.isEmpty()) return
+        val gen = relatedGen
+        relatedLoadingMore = true
+        relatedJob = scope.launch {
+            var token = relatedContinuation
+            if (token == null) {
+                if (relatedLazyTokenTried) {
+                    relatedExhausted = true
+                    relatedLoadingMore = false
+                    return@launch
+                }
+                relatedLazyTokenTried = true
+                val fp = runCatching { InnerTube.relatedFirstPage(owner.id) }.getOrNull()
+                if (gen != relatedGen || current?.id != owner.id) return@launch
+                if (fp == null) {
+                    relatedLoadingMore = false
+                    return@launch
+                }
+                token = fp.next
+                relatedContinuation = token
+                if (token == null) {
+                    relatedExhausted = true
+                    relatedLoadingMore = false
+                    return@launch
+                }
+            }
+            val page = runCatching { InnerTube.relatedNextPage(token) }.getOrNull()
+            if (gen != relatedGen || current?.id != owner.id) return@launch
+            relatedLoadingMore = false
+            if (page == null) return@launch
+            relatedContinuation = page.next
+            if (page.next == null) relatedExhausted = true
+            if (page.videos.isEmpty()) {
+                relatedExhausted = true
+                return@launch
+            }
+            val fresh = ArrayList<VideoItem>()
+            for (entry in page.videos) {
+                if (entry.id == owner.id || entry.id in relatedShownIds) continue
+                val tokens = titleTokens(entry.title)
+                if (relatedKeptTokens.any { sameContent(tokens, it) }) continue
+                val channelKey = entry.channel.lowercase()
+                if (relatedChannelCounts.getOrDefault(channelKey, 0) >= 2) continue
+                relatedChannelCounts[channelKey] = relatedChannelCounts.getOrDefault(channelKey, 0) + 1
+                relatedKeptTokens.add(tokens)
+                relatedShownIds.add(entry.id)
+                fresh.add(entry)
+            }
+            page.videos.forEach { known[it.id] = it }
+            if (fresh.isNotEmpty()) displayRelated = displayRelated + fresh
         }
     }
 

@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.text.HtmlCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.Image
 import org.schabi.newpipe.extractor.MediaFormat
@@ -106,6 +107,12 @@ data class VideoDetails(
     val hdrQualities: List<Int> = emptyList(),
 
     val aspect: Float? = null,
+
+    /** Watch-next continuation token for paging the related list. Set
+     *  only when the related list itself had to come from InnerTube
+     *  (NewPipe related empty); when the NewPipe list is used the token
+     *  stays null and the player fetches the first page lazily. */
+    val relatedNext: String? = null,
 )
 
 @Immutable
@@ -240,6 +247,27 @@ object YouTube {
         HdrFormats.install(id, info)
         val picked = StreamSelection.pick(info)
         val isLive = info.streamType == StreamType.LIVE_STREAM
+        // Related fallback, resolved lazily by the let below only when
+        // the NewPipe related list is empty: the first InnerTube
+        // watch-next page (items + the continuation token to page it
+        // with), degrading to a title search when that page is empty.
+        val fallbackRelated: Pair<List<VideoItem>, String?> by lazy {
+            runBlocking {
+                val page = runCatching { InnerTube.relatedFirstPage(id) }.getOrNull()
+                if (page != null && page.videos.isNotEmpty()) {
+                    page.videos.filter { it.id != id } to page.next
+                } else {
+                    // Last resort: search, but with the title cut at
+                    // its first separator so compilations ("X | Late
+                    // Night Drive Playlist") do not drag every result
+                    // into the exact same topic.
+                    val cutTitle = info.name.substringBefore("|").substringBefore(" - ").trim()
+                    val query = if (cutTitle.length >= 4) cutTitle else info.name
+                    val found = runCatching { search(query).filter { it.id != id } }.getOrDefault(emptyList())
+                    found to null
+                }
+            }
+        }
         VideoDetails(
             item = VideoItem(
                 id = id,
@@ -260,7 +288,7 @@ object YouTube {
             likes = info.likeCount,
             subscribers = info.uploaderSubscriberCount,
             related = info.relatedItems.filterIsInstance<StreamInfoItem>().mapNotNull { it.toVideoItem() }.let { list ->
-                if (list.isNotEmpty()) list else fetchFallbackRelated(id, info.name)
+                if (list.isNotEmpty()) list else fallbackRelated.first
             },
             playable = picked.isPlayable,
             quality = picked.playedHeight?.let { "${it}p${if (picked.hdr) " HDR" else ""}" }
@@ -269,61 +297,9 @@ object YouTube {
             hdrQualities = StreamSelection.hdrHeights(info),
             aspect = (if (picked.usesSeparate) picked.video else picked.muxed)
                 ?.takeIf { it.width > 0 && it.height > 0 }?.let { it.width.toFloat() / it.height },
+            relatedNext = fallbackRelated.second,
         )
     }
-
-    private suspend fun fetchFallbackRelated(id: String, title: String): List<VideoItem> {
-        val parsed = runCatching {
-            val next = InnerTube.postAny("next", org.json.JSONObject().put("videoId", id))
-            val list = mutableListOf<VideoItem>()
-            next.walk { key, obj ->
-                if (key == "compactVideoRenderer" || key == "videoRenderer") {
-                    val vid = obj.optString("videoId")
-                    if (vid.isNotBlank() && vid != id && list.none { it.id == vid }) {
-                        val videoTitle = obj.optJSONObject("title")?.let { t ->
-                            t.optString("simpleText").ifBlank {
-                                t.optJSONArray("runs")?.optJSONObject(0)?.optString("text")
-                            }
-                        }.orEmpty()
-                        val channel = obj.optJSONObject("shortBylineText")?.optJSONArray("runs")?.optJSONObject(0)?.optString("text")
-                            ?: obj.optJSONObject("longBylineText")?.optJSONArray("runs")?.optJSONObject(0)?.optString("text").orEmpty()
-                        val thumb = obj.optJSONObject("thumbnail")?.optJSONArray("thumbnails")?.let { arr ->
-                            arr.optJSONObject(arr.length() - 1)?.optString("url")
-                        }
-                        if (videoTitle.isNotBlank()) {
-                            list.add(
-                                VideoItem(
-                                    id = vid,
-                                    title = videoTitle,
-                                    channel = channel,
-                                    channelUrl = null,
-                                    thumbnail = thumb,
-                                    avatar = null,
-                                    views = -1,
-                                    durationSec = 0,
-                                    uploaded = null,
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-            list
-        }.getOrNull()
-
-        if (!parsed.isNullOrEmpty()) return parsed
-
-        // Last resort: search, but with the title cut at its first
-        // separator so compilations ("X | Late Night Drive Playlist")
-        // do not drag every result into the exact same topic.
-        val cutTitle = title.substringBefore("|").substringBefore(" - ").trim()
-        val query = if (cutTitle.length >= 4) cutTitle else title
-        return runCatching {
-            search(query).filter { it.id != id }
-        }.getOrDefault(emptyList())
-    }
-
-
 
     suspend fun channel(url: String): ChannelDetails = withContext(Dispatchers.IO) {
         val info = ChannelInfo.getInfo(service, url)
