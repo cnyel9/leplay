@@ -233,7 +233,7 @@ fun SettingsScreen(
                         subtitle = I18n.t("appearance_sub", "Theme mode, color palette and UI style"),
                         onClick = { activeFloatingSection = SettingsFloatingSection.APPEARANCE },
                         padded = false,
-                        )
+                    )
                 }
 
                 SettingsSectionHeader(I18n.t("player_interface", "Player & Interface"))
@@ -244,7 +244,7 @@ fun SettingsScreen(
                         subtitle = I18n.t("general_modification_sub", "Font, gestures, quality & downloads"),
                         onClick = { activeFloatingSection = SettingsFloatingSection.GENERAL_MODS },
                         padded = false,
-                        )
+                    )
                 }
 
                 SettingsSectionHeader(I18n.t("language_section", "Language"))
@@ -255,7 +255,7 @@ fun SettingsScreen(
                         subtitle = LanguageSettings.currentDisplay(),
                         onClick = { activeFloatingSection = SettingsFloatingSection.LANGUAGE },
                         padded = false,
-                        )
+                    )
                 }
 
                 SettingsSectionHeader(I18n.t("data_storage", "Data & Storage"))
@@ -266,7 +266,7 @@ fun SettingsScreen(
                         subtitle = I18n.t("storage_sub", "See phone storage & clear LePlay cache"),
                         onClick = { activeFloatingSection = SettingsFloatingSection.STORAGE_USAGE },
                         padded = false,
-                        )
+                    )
                 }
 
                 SettingsSectionHeader(I18n.t("about", "About"))
@@ -275,6 +275,7 @@ fun SettingsScreen(
                         icon = Icons.Rounded.Info,
                         title = I18n.t("version", "Version"),
                         subtitle = "LePlay ${BuildConfig.VERSION_NAME}",
+                        padded = false,
                         trailing = {
                             Box(
                                 modifier = Modifier
@@ -299,16 +300,15 @@ fun SettingsScreen(
                                     )
                                 }
                             }
-                        }
-                        padded = false,
-                        )
+                        },
+                    )
                     SettingsRow(
                         icon = Icons.Rounded.History,
                         title = I18n.t("version_history", "Version history"),
                         subtitle = I18n.t("version_history_sub", "Changelogs from 0.0.1 to the latest"),
                         onClick = { activeFloatingSection = SettingsFloatingSection.VERSION_HISTORY },
                         padded = false,
-                        )
+                    )
                     SettingsRow(
                         icon = Icons.Rounded.FileDownload,
                         title = I18n.t("check_updates", "Check for updates"),
@@ -327,7 +327,7 @@ fun SettingsScreen(
                             }
                         },
                         padded = false,
-                        )
+                    )
                     val openRepo: (String) -> Unit = { url ->
                         runCatching {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -340,7 +340,7 @@ fun SettingsScreen(
                         subtitle = I18n.t("open_source_sub", "View source code on GitHub"),
                         onClick = { openRepo(leplayRepo) },
                         padded = false,
-                        )
+                    )
                     val telegram = "https://github.com/cnyel9"
                     val openTelegram: () -> Unit = {
                         val app = Intent(Intent.ACTION_VIEW, Uri.parse(telegram))
@@ -354,7 +354,7 @@ fun SettingsScreen(
                         subtitle = "Levi Setiadi (@cnyel9)",
                         onClick = openTelegram,
                         padded = false,
-                        )
+                    )
                     SettingsRow(
                         icon = Icons.Rounded.Favorite,
                         title = I18n.t("support_developer", "Support Developer"),
