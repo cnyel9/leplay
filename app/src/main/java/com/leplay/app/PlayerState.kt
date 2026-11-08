@@ -1326,10 +1326,20 @@ class PlayerState(private val scope: CoroutineScope) {
         }
 
         val videoId = current?.id ?: return
-        val url = trackUrl ?: run {
-            val info = StreamCache.get(videoId)
-            info?.subtitles?.firstOrNull { it.languageTag == code }?.content
-                ?: CaptionTracks.get(videoId)?.firstOrNull { it.languageTag == code }?.url
+        // Track URLs from the raw extractor list are not fmt-normalized
+        // and tags can differ by region suffix (id vs id-ID); both made
+        // whole tracks silently fetch nothing or an unparsable payload
+        // (0.0.8-test3 fix round). Prefer the normalized CaptionTracks
+        // URL, match tags by prefix, and force fmt=vtt on any raw URL.
+        fun tagMatches(tag: String): Boolean =
+            tag.equals(code, ignoreCase = true) || tag.startsWith("$code-", ignoreCase = true)
+        fun asVtt(raw: String): String = runCatching {
+            val u = okhttp3.HttpUrl.parse(raw) ?: return raw
+            u.newBuilder().setQueryParameter("fmt", "vtt").build().toString()
+        }.getOrDefault(raw)
+        val url = trackUrl?.let(::asVtt) ?: run {
+            CaptionTracks.get(videoId)?.firstOrNull { tagMatches(it.languageTag) }?.url
+                ?: StreamCache.get(videoId)?.subtitles?.firstOrNull { tagMatches(it.languageTag) }?.content?.let(::asVtt)
         }
 
         if (url != null) {
@@ -1338,7 +1348,7 @@ class PlayerState(private val scope: CoroutineScope) {
                 withContext(Dispatchers.Main) {
                     activeCues = cues
                     val pos = controller?.currentPosition ?: 0L
-                    captionText = cues.firstOrNull { pos in it.startMs..it.endMs }?.text
+                    captionText = cues.lastOrNull { pos in it.startMs..it.endMs }?.text
                 }
             }
         }
@@ -1550,7 +1560,12 @@ class PlayerState(private val scope: CoroutineScope) {
 
         if (selectedSubtitleLanguage != null && activeCues.isNotEmpty()) {
             val pos = positionMs
-            captionText = activeCues.firstOrNull { pos in it.startMs..it.endMs }?.text
+            // Latest-starting active cue wins (0.0.8-test3 fix round):
+            // YouTube VTT windows overlap, and rolling ASR captions emit
+            // cumulative versions of one line, so the earliest match is
+            // systematically the stale, least complete text. That single
+            // choice caused both the "late" and the "not full" reports.
+            captionText = activeCues.lastOrNull { pos in it.startMs..it.endMs }?.text
         } else if (selectedSubtitleLanguage == null) {
             captionText = null
         }
@@ -1587,12 +1602,12 @@ class PlayerState(private val scope: CoroutineScope) {
         }
 
         override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
-            // The side-loaded cue list owns the overlay whenever it exists
-            // (0.0.8-test3): the player's own text output carries the same
-            // VTT cues whenever a text track is active, and letting both
-            // write captionText made the text flicker and swap late. When no
-            // side-loaded list exists (e.g. embedded tracks) the player
-            // output still drives the overlay as before.
+            // The side-loaded cue list is the ONLY caption source for VOD
+            // (0.0.8-test3, corrected by the pipeline map): media items
+            // carry no text track, so on VOD this callback never fires.
+            // It can still fire on live HLS; there the side-loaded list
+            // keeps ownership whenever it exists so the two writers never
+            // fight over the overlay.
             if (activeCues.isNotEmpty()) return
             val text = cueGroup.cues
                 .mapNotNull { cue -> cue.text?.toString()?.takeIf { it.isNotBlank() } }
