@@ -54,6 +54,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Comment
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -400,6 +401,12 @@ fun ShortsScreen(
                     loading = false
                     playError = null
                 }
+                if (state == Player.STATE_ENDED && ShortsSettings.autoScroll) {
+                    val next = pager.currentPage + 1
+                    if (next < feed.videos.size) {
+                        scope.launch { pager.animateScrollToPage(next) }
+                    }
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -426,10 +433,16 @@ fun ShortsScreen(
         }
     }
 
+    // Auto scroll swaps the endless loop for play-to-end (0.0.8).
+    LaunchedEffect(ShortsSettings.autoScroll) {
+        exo.repeatMode = if (ShortsSettings.autoScroll) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ONE
+    }
+
     val currentId = current?.id
     LaunchedEffect(currentId) {
         if (currentId == null) return@LaunchedEffect
         SeenShorts.markSeen(context, currentId)
+        current?.let { WatchHistory.record(it, WatchHistory.KIND_SHORT) }
         loading = true
         exo.pause()
         info = null
@@ -816,6 +829,8 @@ fun ShortsScreen(
                             },
                             backdrop = backdrop,
                             glass = glass,
+                            autoScroll = ShortsSettings.autoScroll,
+                            onToggleAutoScroll = { ShortsSettings.setAutoScroll(!ShortsSettings.autoScroll) },
                         )
                     }
 
@@ -1076,6 +1091,8 @@ private fun ShortsTopBar(
     onRefresh: () -> Unit,
     backdrop: Backdrop,
     glass: GlassSpec,
+    autoScroll: Boolean,
+    onToggleAutoScroll: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -1093,6 +1110,15 @@ private fun ShortsTopBar(
             fontWeight = FontWeight.Bold,
         )
         Spacer(Modifier.weight(1f))
+        ShortsCircleButton(
+            Icons.Rounded.KeyboardDoubleArrowDown,
+            I18n.t("auto_scroll", "Auto scroll"),
+            onToggleAutoScroll,
+            backdrop,
+            glass,
+            tint = if (autoScroll) MaterialTheme.colorScheme.primary else Color.White,
+        )
+        Spacer(Modifier.width(6.dp))
         Box(
             Modifier
                 .size(32.dp)
@@ -1136,6 +1162,7 @@ private fun ShortsCircleButton(
     glass: GlassSpec,
     loading: Boolean = false,
     enabled: Boolean = true,
+    tint: Color = Color.White,
 ) {
     Box(
         Modifier
@@ -1152,7 +1179,7 @@ private fun ShortsCircleButton(
                 strokeWidth = 2.dp,
             )
         } else {
-            Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(16.dp))
+            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(16.dp))
         }
     }
 }

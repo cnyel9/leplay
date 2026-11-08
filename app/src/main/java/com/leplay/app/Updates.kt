@@ -81,6 +81,7 @@ data class UpdateInfo(
     val notes: String,
     val apkUrl: String,
     val sizeBytes: Long,
+    val htmlUrl: String = "",
 )
 
 @Immutable
@@ -300,6 +301,7 @@ class UpdateState(private val scope: CoroutineScope) {
                 notes = json.optString("body").orEmpty(),
                 apkUrl = url,
                 sizeBytes = size,
+                htmlUrl = json.optString("html_url").orEmpty(),
             )
         }
     }
@@ -488,8 +490,27 @@ fun UpdateOverlay(state: UpdateState, backdrop: Backdrop) {
                         lineHeight = 20.sp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 300.dp)
+                            .heightIn(max = 460.dp)
                             .verticalScroll(rememberScrollState()),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        I18n.t("view_on_github", "View on GitHub"),
+                        color = c.primary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .pressable {
+                                val url = update?.htmlUrl?.ifBlank { null }
+                                    ?: "https://github.com/cnyel9/leplay/releases/tag/${update?.tag.orEmpty()}"
+                                runCatching {
+                                    context.startActivity(
+                                        android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)),
+                                    )
+                                }
+                            }
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
                     )
 
                     state.error?.let { message ->

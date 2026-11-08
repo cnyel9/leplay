@@ -227,7 +227,8 @@ class PlayerState(private val scope: CoroutineScope) {
 
 
     val stageAspect: Float get() = if (AudioOnly.enabled) AudioStageAspect else {
-        min(videoAspect.coerceIn(StageMinAspect, StageMaxAspect), StageFrameAspect)
+        if (portraitTall) TallStageAspect
+        else min(videoAspect.coerceIn(StageMinAspect, StageMaxAspect), StageFrameAspect)
     }
     var firstFrameRendered by mutableStateOf(false)
         private set
@@ -244,6 +245,11 @@ class PlayerState(private val scope: CoroutineScope) {
 
     /** Portrait videos go edge-to-edge without rotating the device, exactly like YouTube. */
     var portraitFullscreen by mutableStateOf(false)
+
+    /** Tall vertical viewing mode (0.0.8): entered by dragging down on the
+     *  video area in portrait, the stage grows into a tall frame with the
+     *  video letterboxed in the middle, like YouTube. */
+    var portraitTall by mutableStateOf(false)
 
     val portraitVideo get() = videoAspect < 1.02f
 
@@ -546,7 +552,13 @@ class PlayerState(private val scope: CoroutineScope) {
         historyNavInProgress = false
         currentShownAsMusic = isMusicMode
         current = item
-        if (isMusicMode) RecentMusic.record(item)
+        portraitTall = false
+        if (isMusicMode) {
+            RecentMusic.record(item)
+            WatchHistory.record(item, WatchHistory.KIND_MUSIC)
+        } else {
+            WatchHistory.record(item, WatchHistory.KIND_VIDEO)
+        }
         details = null
         displayRelated = emptyList()
         relatedContinuation = null

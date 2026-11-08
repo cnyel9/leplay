@@ -238,7 +238,7 @@ fun HomeScreen(
         resetKey = scrollToTop to (lib.home.generation to activeFilter),
         header = {
             Column(Modifier.fillMaxWidth()) {
-                ScreenHeader(title = "LePlay", brandMark = true) { HeaderActions(onSearch, onAccount) }
+                ScreenHeader(title = "LePlay") { HeaderActions(onSearch, onAccount) }
                 HomeFilterChips(selected = activeFilter, onSelect = { activeFilter = it })
             }
         },
@@ -619,6 +619,7 @@ fun LibraryScreen(
     onOpenPlaylist: (PlaylistRef) -> Unit,
     onOpenChannel: (String) -> Unit = {},
     onOpenAllSubscriptions: () -> Unit = {},
+    onOpenHistory: () -> Unit = {},
     onSearch: () -> Unit,
     onSignIn: () -> Unit,
     onAccount: () -> Unit,
@@ -626,6 +627,9 @@ fun LibraryScreen(
 ) {
     val signedIn = Account.signedIn
     LaunchedEffect(signedIn) {
+        // Local history loads for everyone (0.0.8); the server feed joins
+        // it when signed in.
+        WatchHistory.load()
         if (signedIn) {
             lib.history.ensureLoaded()
             if (lib.playlists.isEmpty()) lib.loadPlaylists()
@@ -643,7 +647,7 @@ fun LibraryScreen(
             topPadding = top,
         ) {
         LazyColumn(state = rememberScrollToTop(scrollToTop), contentPadding = contentPadding.withTop(top)) {
-            if (!signedIn) {
+            if (!signedIn && WatchHistory.items.isEmpty()) {
                 item {
                     EmptyState(
                         icon = Icons.Rounded.VideoLibrary,
@@ -654,9 +658,31 @@ fun LibraryScreen(
                 }
                 return@LazyColumn
             }
-            item(key = "historyTitle") { SectionTitle(I18n.t("history", "History")) }
+            item(key = "historyTitle") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    SectionTitle(I18n.t("history", "History"), modifier = Modifier.padding(0.dp))
+                    Text(
+                        I18n.t("filter_all", "All"),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .pressable { onOpenHistory() }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+            }
             item(key = "history") {
-                val history = lib.history.videos
+                // Local recordings first (realtime, works signed out), then
+                // the signed-in server feed, deduped by id (0.0.8).
+                val history = (WatchHistory.items + lib.history.videos).distinctBy { it.id }
                 when {
                     history.isNotEmpty() -> LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -726,19 +752,139 @@ fun LibraryScreen(
                 }
             }
 
-            item(key = "playlistsTitle") { SectionTitle(I18n.t("playlists", "Playlists")) }
-            val pinned = listOf(
-                PlaylistRef("WL", I18n.t("watch_later", "Watch later"), null, null),
-                PlaylistRef("MDL", "LePlay Music Downloads", null, null),
-                PlaylistRef("LL", I18n.t("liked_videos", "Liked videos"), null, null),
-            )
-            items((pinned + lib.playlists).chunked(2), key = { row -> row.joinToString { it.id } }) { row ->
-                Row((if (GlassSettings.liteMode) Modifier else Modifier.animateItem()).padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    row.forEach { pl -> PlaylistTile(pl, Modifier.weight(1f)) { onOpenPlaylist(pl) } }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
+            if (signedIn) {
+                item(key = "playlistsTitle") { SectionTitle(I18n.t("playlists", "Playlists")) }
+                val pinned = listOf(
+                    PlaylistRef("WL", I18n.t("watch_later", "Watch later"), null, null),
+                    PlaylistRef("MDL", "LePlay Music Downloads", null, null),
+                    PlaylistRef("LL", I18n.t("liked_videos", "Liked videos"), null, null),
+                )
+                items((pinned + lib.playlists).chunked(2), key = { row -> row.joinToString { it.id } }) { row ->
+                    Row((if (GlassSettings.liteMode) Modifier else Modifier.animateItem()).padding(horizontal = 16.dp, vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        row.forEach { pl -> PlaylistTile(pl, Modifier.weight(1f)) { onOpenPlaylist(pl) } }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
                 }
             }
         }
+        }
+    }
+}
+
+private enum class HistoryFilter {
+    All, Videos, Music, Shorts;
+
+    val label: String get() = when (this) {
+        All -> I18n.t("filter_all", "All")
+        Videos -> I18n.t("filter_videos", "Videos")
+        Music -> I18n.t("filter_music", "Music")
+        Shorts -> I18n.t("filter_shorts", "Shorts")
+    }
+}
+
+/**
+ * Full history page (0.0.8): one unified list over the local recordings
+ * (realtime) plus the signed-in server feed, with filter chips for
+ * Semua / Video / Musik / Shorts, as decided with Levi.
+ */
+@Composable
+fun HistoryScreen(
+    lib: LibraryData,
+    contentPadding: PaddingValues,
+    onBack: () -> Unit,
+    onOpen: (VideoItem) -> Unit,
+    onOpenMusic: (VideoItem) -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    var filter by remember { mutableStateOf(HistoryFilter.All) }
+    LaunchedEffect(Unit) {
+        WatchHistory.load()
+        if (Account.signedIn) lib.history.ensureLoaded()
+    }
+    val merged = (WatchHistory.items + lib.history.videos).distinctBy { it.id }
+    val filtered = merged.filter { item ->
+        when (filter) {
+            HistoryFilter.All -> true
+            HistoryFilter.Videos -> WatchHistory.kindOf(item) == WatchHistory.KIND_VIDEO
+            HistoryFilter.Music -> WatchHistory.kindOf(item) == WatchHistory.KIND_MUSIC
+            HistoryFilter.Shorts -> WatchHistory.kindOf(item) == WatchHistory.KIND_SHORT
+        }
+    }
+    Column(Modifier.fillMaxSize().background(c.surface)) {
+        BackScreenHeader(onBack = onBack) {
+            Text(
+                text = I18n.t("history", "History"),
+                fontFamily = RoundedHeavy,
+                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp,
+                letterSpacing = (-0.5).sp,
+                color = c.onSurface,
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val isDark = isDarkTheme()
+            val isAmoled = ThemeSettings.mode == "amoled"
+            HistoryFilter.entries.forEach { f ->
+                val isSelected = f == filter
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            when {
+                                isSelected -> if (isDark || isAmoled) Color.White else Color.Black
+                                isAmoled -> Color(0xFF161616)
+                                isDark -> Color(0xFF272727)
+                                else -> Color(0xFFE5E5E5)
+                            }
+                        )
+                        .pressable(pressedScale = 0.94f) { filter = f }
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        f.label,
+                        color = when {
+                            isSelected -> if (isDark || isAmoled) Color.Black else Color.White
+                            isDark || isAmoled -> Color.White
+                            else -> Color(0xFF0F0F0F)
+                        },
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+        }
+        if (filtered.isEmpty()) {
+            Text(
+                if (lib.history.loading) I18n.t("loading_more", "Loading…") else I18n.t("nothing_watched", "Nothing watched yet."),
+                color = c.onSurfaceVariant, fontSize = 14.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp),
+            ) {
+                items(filtered, key = { "hist-" + it.id }) { video ->
+                    if (Account.signedIn && video.id == filtered.lastOrNull()?.id) {
+                        LaunchedEffect(filtered.size) { lib.history.loadMore() }
+                    }
+                    Box((if (GlassSettings.liteMode) Modifier else Modifier.animateItem()).padding(horizontal = 20.dp)) {
+                        VideoRow(
+                            video,
+                            onClick = {
+                                if (WatchHistory.kindOf(video) == WatchHistory.KIND_MUSIC) onOpenMusic(video)
+                                else onOpen(video)
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 }

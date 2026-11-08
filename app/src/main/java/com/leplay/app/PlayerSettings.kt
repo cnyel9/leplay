@@ -62,18 +62,30 @@ object MiniPlayerSettings {
 
 object ShortsSettings {
     private const val KEY_CLEAN_MODE = "shorts_clean_mode"
+    private const val KEY_AUTO_SCROLL = "shorts_auto_scroll"
     private var prefs: SharedPreferences? = null
 
     var cleanMode by mutableStateOf(false)
         private set
 
+    /** When on, a Short that plays to the end advances to the next one
+     *  instead of looping (0.0.8, mirrors the clean-mode pattern). */
+    var autoScroll by mutableStateOf(false)
+        private set
+
     fun init(context: Context) {
         prefs = context.getSharedPreferences("playback", Context.MODE_PRIVATE)
         cleanMode = prefs?.getBoolean(KEY_CLEAN_MODE, false) ?: false
+        autoScroll = prefs?.getBoolean(KEY_AUTO_SCROLL, false) ?: false
     }
 
     fun set(on: Boolean) {
         cleanMode = on
         prefs?.edit()?.putBoolean(KEY_CLEAN_MODE, on)?.apply()
+    }
+
+    fun setAutoScroll(on: Boolean) {
+        autoScroll = on
+        prefs?.edit()?.putBoolean(KEY_AUTO_SCROLL, on)?.apply()
     }
 }

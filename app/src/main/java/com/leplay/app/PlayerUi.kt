@@ -180,6 +180,9 @@ internal const val StageMaxAspect = 2.4f
 
 internal const val StageFrameAspect = 16f / 9f
 
+/** Aspect (w/h) of the tall vertical viewing mode (0.0.8 portrait drag-down). */
+internal const val TallStageAspect = 0.75f
+
 internal const val AudioStageAspect = 2.5f
 
 private const val DetailsFadeStart = 0.55f

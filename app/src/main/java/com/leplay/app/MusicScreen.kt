@@ -576,16 +576,6 @@ private fun MusicScreenHeader(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // The LePlay Music header carries the app icon itself (same mark
-        // as the launcher and the main header), not a separate glyph.
-        Image(
-            painter = painterResource(R.drawable.ic_brand),
-            contentDescription = null,
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(8.dp)),
-        )
-        Spacer(Modifier.width(10.dp))
         Text(
             text = "LePlay Music",
             modifier = Modifier.weight(1f),

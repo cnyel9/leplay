@@ -72,6 +72,8 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.DataUsage
 import androidx.compose.material.icons.rounded.Delete
@@ -315,6 +317,12 @@ fun SettingsScreen(
                         subtitle = "Levi Setiadi (@cnyel9)",
                         onClick = openTelegram,
                     )
+                    SettingsRow(
+                        icon = Icons.Rounded.Favorite,
+                        title = I18n.t("support_developer", "Support Developer"),
+                        subtitle = I18n.t("support_developer_sub", "Buy the developer a coffee"),
+                        onClick = { activeFloatingSection = SettingsFloatingSection.SUPPORT },
+                    )
                 }
             }
         }
@@ -390,6 +398,15 @@ fun SettingsScreen(
                         onDismiss = { activeFloatingSection = null },
                     ) {
                         VersionHistoryContent()
+                    }
+                }
+                SettingsFloatingSection.SUPPORT -> {
+                    SettingsFloatingDialog(
+                        title = I18n.t("support_developer", "Support Developer"),
+                        subtitle = I18n.t("support_developer_sub", "Buy the developer a coffee"),
+                        onDismiss = { activeFloatingSection = null },
+                    ) {
+                        SupportDeveloperContent()
                     }
                 }
                 null -> {}
@@ -598,6 +615,7 @@ private enum class SettingsFloatingSection {
     STORAGE_USAGE,
     LANGUAGE,
     VERSION_HISTORY,
+    SUPPORT,
 }
 
 @Composable
@@ -741,112 +759,157 @@ private fun SettingsFloatingDialog(
 @Composable
 private fun VersionHistoryContent() {
     val c = MaterialTheme.colorScheme
-    var releases by remember { mutableStateOf<List<ReleaseEntry>?>(null) }
-    var failed by remember { mutableStateOf(false) }
-    var errorDetail by remember { mutableStateOf("") }
-    var retryTick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(retryTick) {
-        failed = false
-        errorDetail = ""
-        releases = null
-        runCatching { fetchReleaseHistory() }
-            .onSuccess { releases = it }
-            .onFailure { e ->
-                failed = true
-                errorDetail = ((e as? ReleaseHistoryException)?.detail
-                    ?: "${e.javaClass.simpleName}: ${e.message ?: ""}").take(120)
-            }
-    }
-    when {
-        failed -> Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                I18n.t("release_history_failed", "Could not load version history"),
-                color = c.onSurfaceVariant, fontSize = 14.sp, fontWeight = FontWeight.Medium,
-            )
-            if (errorDetail.isNotBlank()) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    errorDetail,
-                    color = c.onSurfaceVariant.copy(alpha = 0.75f), fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            PillButton(I18n.t("retry", "Retry"), onClick = { retryTick++ })
-        }
-        releases == null -> Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            CircularProgressIndicator(color = c.primary, strokeWidth = 3.dp, modifier = Modifier.size(36.dp))
-            Spacer(Modifier.height(14.dp))
-            Text(
-                I18n.t("connecting_github_releases", "Connecting to GitHub releases…"),
-                fontSize = 12.5.sp, color = c.onSurfaceVariant,
-            )
-        }
-        else -> LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            items(releases.orEmpty(), key = { it.tag }) { entry ->
-                SettingsCard {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                entry.name.ifBlank { "LePlay ${entry.version}" },
-                                fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold,
-                                fontSize = 16.sp, color = c.onSurface,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (entry.version == BuildConfig.VERSION_NAME) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(Color(0xFF132818))
-                                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(6.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFF2ECC71)),
-                                        )
-                                        Spacer(Modifier.width(5.dp))
-                                        Text(
-                                            text = I18n.t("up_to_date", "Up to date"),
-                                            color = Color(0xFF2ECC71),
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 11.sp,
-                                        )
-                                    }
+    // Written manually per version (0.0.8 decision): the old screen fetched
+    // the release list from GitHub and force-closed when its LazyColumn was
+    // measured inside the scrolling dialog. A static list cannot crash.
+    val entries = listOf(
+        Triple("0.0.7", "8 Nov 2026", "Music engine (Package A): queue, auto radio, queue panel, prev/next everywhere. Autoplay follows the on-screen Up Next list, endless related videos, search sort chips, MP3 audio-only downloads, double-tap seek without the controls flashing, new icon, single Liquid Glass switch, TV and tablet polish, voice search."),
+        Triple("0.0.6", "8 Nov 2026", "Lite Mode, live chat and comments panels fixed, next/previous video buttons, responsive player buttons, animation pass."),
+        Triple("0.0.5", "7 Nov 2026", "Indonesian by default, full Indonesian/English UI dictionaries, selectable descriptions, rb/jt/M number formats."),
+        Triple("0.0.4", "7 Nov 2026", "Channel sort chips fixed (labels and order), live chat replay fallback."),
+        Triple("0.0.3", "7 Nov 2026", "Channel sort chips (Latest/Popular/Oldest), live chat replay."),
+        Triple("0.0.2", "7 Nov 2026", "New in-app brand icon and TV banner."),
+        Triple("0.0.1", "7 Nov 2026", "First release: live chat and comments panels fixed, official icon."),
+    )
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        entries.forEach { (version, date, body) ->
+            SettingsCard {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "LePlay $version",
+                            fontFamily = RoundedHeavy, fontWeight = FontWeight.ExtraBold,
+                            fontSize = 16.sp, color = c.onSurface,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (version == BuildConfig.VERSION_NAME.substringBefore('-')) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF132818))
+                                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF2ECC71)),
+                                    )
+                                    Spacer(Modifier.width(5.dp))
+                                    Text(
+                                        text = I18n.t("up_to_date", "Up to date"),
+                                        color = Color(0xFF2ECC71),
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 11.sp,
+                                    )
                                 }
                             }
                         }
-                        if (entry.publishedAt.isNotBlank()) {
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                entry.publishedAt.take(10),
-                                fontSize = 12.sp, color = c.onSurfaceVariant,
-                            )
-                        }
-                        if (entry.body.isNotBlank()) {
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                entry.body.trim(),
-                                fontSize = 13.sp, lineHeight = 19.sp,
-                                color = c.onSurface.copy(alpha = 0.92f),
-                            )
-                        }
                     }
+                    Spacer(Modifier.height(2.dp))
+                    Text(date, fontSize = 12.sp, color = c.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        body,
+                        fontSize = 13.sp, lineHeight = 19.sp,
+                        color = c.onSurface.copy(alpha = 0.92f),
+                    )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SupportDeveloperContent() {
+    val c = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            I18n.t("support_body", "LePlay is free, with no ads. If it makes your day a little better, a voluntary coffee keeps development going. Thank you!"),
+            fontSize = 13.5.sp, lineHeight = 19.sp,
+            color = c.onSurface.copy(alpha = 0.92f),
+        )
+        Spacer(Modifier.height(16.dp))
+        DonationCard(
+            iconRes = R.drawable.dana,
+            name = "DANA",
+            number = "0831-5475-6450",
+            holder = "Levi Setiadi",
+            onCopy = { copyDonationNumber(context, "083154756450") },
+        )
+        Spacer(Modifier.height(10.dp))
+        DonationCard(
+            iconRes = R.drawable.seabank,
+            name = "SeaBank",
+            number = "901587956054",
+            holder = "Levi Setiadi",
+            onCopy = { copyDonationNumber(context, "901587956054") },
+        )
+        Spacer(Modifier.height(10.dp))
+        Text(
+            I18n.t("tap_to_copy", "Tap a card to copy the number"),
+            fontSize = 11.5.sp, color = c.onSurfaceVariant,
+        )
+    }
+}
+
+private fun copyDonationNumber(context: Context, number: String) {
+    runCatching {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("LePlay", number))
+        android.widget.Toast.makeText(context, I18n.t("copied", "Copied"), android.widget.Toast.LENGTH_SHORT).show()
+    }
+}
+
+@Composable
+private fun DonationCard(
+    iconRes: Int,
+    name: String,
+    number: String,
+    holder: String,
+    onCopy: () -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    SettingsCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .pressable(onClick = onCopy)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = androidx.compose.ui.res.painterResource(iconRes),
+                    contentDescription = name,
+                    modifier = Modifier.size(34.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(name, fontWeight = FontWeight.SemiBold, fontSize = 14.5.sp, color = c.onSurface)
+                Spacer(Modifier.height(1.dp))
+                Text(number, fontSize = 13.sp, color = c.onSurface)
+                Text(holder, fontSize = 11.5.sp, color = c.onSurfaceVariant.copy(alpha = 0.8f))
+            }
+            Icon(
+                imageVector = Icons.Rounded.ContentCopy,
+                contentDescription = I18n.t("copied", "Copied"),
+                tint = c.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(18.dp),
+            )
         }
     }
 }
@@ -1876,16 +1939,17 @@ private fun LanguageContent(context: Context, onLanguageSelected: () -> Unit) {
 
         Spacer(Modifier.height(10.dp))
 
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 380.dp),
+        // Plain Column inside the dialog's own scroll (0.0.8): the old
+        // LazyColumn was hard-capped at 380.dp, which clipped the list
+        // halfway down the screen. ~26 rows render fine eagerly.
+        Column(
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            items(filteredLanguages, key = { it.code }) { item ->
+            filteredLanguages.forEach { item ->
                 val isSelected = currentCode.equals(item.code, ignoreCase = true)
                 Row(
-                    modifier = (if (GlassSettings.liteMode) Modifier else Modifier.animateItem())
+                    modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
                         .background(if (isSelected) c.primary.copy(alpha = 0.14f) else c.surfaceContainerLow.copy(alpha = 0.5f))

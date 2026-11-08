@@ -366,6 +366,16 @@ fun VideoContent(
                                 val isLeftEdge = gesturesOn && downX < 0.20f
                                 val isRightEdge = gesturesOn && downX > 0.80f
 
+                                // Swipe down in the CENTER zone exits fullscreen
+                                // (0.0.8). The edge strips stay brightness/volume,
+                                // so the zones never fight each other.
+                                if (!verticalSwipeHandled && isVerticalIntent && totalDy < -90f && downX in 0.20f..0.80f) {
+                                    verticalSwipeHandled = true
+                                    change.consume()
+                                    onToggleFullscreen()
+                                    return@withTimeoutOrNull null
+                                }
+
                                 if (!isDraggingGesture && isVerticalIntent && kotlin.math.abs(totalDy) > 60f) {
                                     if (isLeftEdge || isRightEdge) {
                                         isDraggingGesture = true
@@ -403,9 +413,16 @@ fun VideoContent(
                                     verticalSwipeHandled = true
                                     change.consume()
                                     if (totalDy < -90f) {
-                                        onCollapse()
+                                        // Drag down on the video: enter the tall
+                                        // vertical mode (0.0.8); a second drag
+                                        // down while tall collapses to the mini
+                                        // player, as before.
+                                        if (!state.portraitTall) state.portraitTall = true
+                                        else onCollapse()
                                     } else {
-                                        onToggleFullscreen()
+                                        // Drag up: leave tall mode first, else fullscreen.
+                                        if (state.portraitTall) state.portraitTall = false
+                                        else onToggleFullscreen()
                                     }
                                     return@withTimeoutOrNull null
                                 }
@@ -428,7 +445,6 @@ fun VideoContent(
                     if (elapsed >= holdSpeedMs - 80L) {
                         seekWindow?.cancel()
                         if (!state.scrubDragging && state.beginHoldSpeed()) {
-                            currentView.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                             controlsVisible = false
                             burstActive = false
                             waitForUpOrCancellation()?.consume()
@@ -662,19 +678,24 @@ fun VideoContent(
                     }
 
 
-                    GlassButton(
-                        if (state.zoomToFill) Icons.Rounded.AspectRatio else Icons.Rounded.CropFree,
-                        if (state.zoomToFill) I18n.t("fit_to_screen", "Fit to screen") else I18n.t("zoom_to_fill", "Fill screen"),
-                        enabled,
-                        size = 32.dp,
-                        iconSize = 18.dp,
-                        tinted = state.zoomToFill,
-                        backdrop = videoBackdrop,
-                    ) {
-                        touched()
-                        state.toggleZoomToFill()
+                    // The zoom/fit toggle lives only in the fullscreen top bar
+                    // (0.0.8): in portrait the single fullscreen button at the
+                    // bottom right is the only expand affordance.
+                    if (fullscreen) {
+                        GlassButton(
+                            if (state.zoomToFill) Icons.Rounded.AspectRatio else Icons.Rounded.CropFree,
+                            if (state.zoomToFill) I18n.t("fit_to_screen", "Fit to screen") else I18n.t("zoom_to_fill", "Fill screen"),
+                            enabled,
+                            size = 32.dp,
+                            iconSize = 18.dp,
+                            tinted = state.zoomToFill,
+                            backdrop = videoBackdrop,
+                        ) {
+                            touched()
+                            state.toggleZoomToFill()
+                        }
+                        Spacer(Modifier.width(6.dp))
                     }
-                    Spacer(Modifier.width(6.dp))
 
 
                     if (pip?.supported == true) {
@@ -710,9 +731,6 @@ fun VideoContent(
                     GlassButton(Icons.Rounded.SkipPrevious, I18n.t("previous", "Previous"), enabled && state.current?.isLive != true, size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
                         touched(); state.previousVideo()
                     }
-                    GlassButton(Icons.Rounded.Replay10, I18n.t("back_10_seconds", "Back 10 seconds"), enabled, size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
-                        touched(); state.seekBy(-10_000)
-                    }
                     val playGlass = Modifier.liquidGlass(
                         videoBackdrop,
                         glassSpec(
@@ -735,9 +753,6 @@ fun VideoContent(
                         glass = true,
                         modifier = Modifier.focusRequester(playFocusRequester),
                     ) { touched(); state.togglePlay() }
-                    GlassButton(Icons.Rounded.Forward10, I18n.t("forward_10_seconds", "Forward 10 seconds"), enabled, size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
-                        touched(); state.seekBy(10_000)
-                    }
                     GlassButton(Icons.Rounded.SkipNext, I18n.t("next", "Next"), enabled && state.hasNextVideo(), size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
                         touched(); state.nextVideo()
                     }
