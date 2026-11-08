@@ -968,7 +968,7 @@ class SearchState(private val scope: CoroutineScope) {
 
     /** Switch the result sort and re-run the stored submitted query
      *  under it. A no-op when nothing was ever submitted. */
-    fun setSort(s: SearchSort) {
+    fun selectSort(s: SearchSort) {
         if (s == sort) return
         sort = s
         nextToken = null
@@ -1421,7 +1421,7 @@ fun SearchScreen(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     ) {
                         item(span = { GridItemSpan(maxLineSpan) }, key = "searchSort") {
-                            SearchSortChips(state.sort, onSelect = { state.setSort(it) })
+                            SearchSortChips(state.sort, onSelect = { state.selectSort(it) })
                         }
                         gridItems(state.results, key = { it.id }) { video ->
                             VideoCard(video, onClick = {
@@ -1436,7 +1436,7 @@ fun SearchScreen(
                 } else {
                 LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
                 item(key = "searchSort") {
-                    SearchSortChips(state.sort, onSelect = { state.setSort(it) })
+                    SearchSortChips(state.sort, onSelect = { state.selectSort(it) })
                 }
                 items(state.results, key = { it.id }) { video ->
                     VideoCard(video, onClick = {
