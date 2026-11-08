@@ -74,6 +74,7 @@ object GlassSettings {
     private const val PREFS = "appearance"
     private const val KEY = "liquid_glass"
     private const val KEY_LITE_MODE = "lite_mode"
+    private const val KEY_GLASS_REPAIRED = "glass_state_repaired_008"
 
     private var prefs: SharedPreferences? = null
 
@@ -98,7 +99,23 @@ object GlassSettings {
         val glassOn = enabled && !liteMode
         enabled = glassOn
         liteMode = !glassOn
-        p.edit().putBoolean(KEY, enabled).putBoolean(KEY_LITE_MODE, liteMode).apply()
+        // One-time repair (0.0.8-test3 rebuild 123): test builds before the
+        // single-switch model wrote lite_mode=true for installs that had
+        // only ever toggled unrelated lite paths, and the normalization
+        // above then persisted liquid_glass=false on top of it. A user who
+        // explicitly switched Liquid Glass ON in Settings (setGlass writes
+        // both keys together) is untouched; only the contradictory
+        // both-off state, which no current switch can produce on purpose,
+        // is restored to the product default: glass ON, lite OFF.
+        if (!enabled && liteMode && !p.getBoolean(KEY_GLASS_REPAIRED, false)) {
+            enabled = true
+            liteMode = false
+        }
+        p.edit()
+            .putBoolean(KEY, enabled)
+            .putBoolean(KEY_LITE_MODE, liteMode)
+            .putBoolean(KEY_GLASS_REPAIRED, true)
+            .apply()
         GlassQuality.recompute()
     }
 
@@ -273,8 +290,8 @@ fun Modifier.pageGlass(shape: Shape, solid: Color, tintAlpha: Float = 0.45f): Mo
                 shape = shape,
                 tint = solid.copy(alpha = tintAlpha),
                 blur = 18.dp,
-                refractionHeight = 12.dp,
-                refractionAmount = 16.dp,
+                refractionHeight = 14.dp,
+                refractionAmount = 22.dp,
             ),
         )
     } else if (GlassQuality.effectsSupported) {
@@ -288,6 +305,50 @@ fun Modifier.pageGlass(shape: Shape, solid: Color, tintAlpha: Float = 0.45f): Mo
         this
             .clip(shape)
             .background(solid.copy(alpha = 0.55f))
+            .drawBehind {
+                drawRect(
+                    Brush.verticalGradient(
+                        0f to Color.White.copy(alpha = 0.14f),
+                        0.55f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.05f),
+                    ),
+                )
+            }
+            .border(1.dp, Color.White.copy(alpha = 0.16f), shape)
+    } else {
+        this.clip(shape).background(solid)
+    }
+}
+
+/**
+ * Refractive glass for a surface sitting on its own screen-local backdrop
+ * layer, with exactly the 0.0.1 engine parameters (0.0.8-test3, owner
+ * verdict: the expanded glass must look like 0.0.1, not like the frosted
+ * approximation). The caller owns a [rememberLayerBackdrop] layer that
+ * wraps that screen's background and content and consumes it OUTSIDE the
+ * recorded layer, the CollapsingHeaderLayout pattern; never pass a
+ * backdrop whose recorded layer contains the drawing surface itself (that
+ * feedback crashed Settings in the first 0.0.8-test3 build). With glass
+ * OFF the surface is the plain solid colour; on a shader-less device with
+ * glass ON it degrades to the shared frosted approximation.
+ */
+@Composable
+fun Modifier.ownLayerGlass(backdrop: Backdrop, shape: Shape, solid: Color): Modifier {
+    return if (GlassQuality.effectsSupported) {
+        this.liquidGlass(
+            backdrop,
+            glassSpec(
+                shape = shape,
+                tint = glassFill(),
+                blur = 18.dp,
+                refractionHeight = 14.dp,
+                refractionAmount = 22.dp,
+            ),
+        )
+    } else if (GlassSettings.enabled && !GlassSettings.liteMode) {
+        this
+            .clip(shape)
+            .background(glassFill())
             .drawBehind {
                 drawRect(
                     Brush.verticalGradient(

@@ -177,11 +177,18 @@ fun BrandMark() {
 @Composable
 fun CircleAction(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
+    val settingsGlass = LocalSettingsBackdrop.current
     Box(
         modifier = Modifier
             .size(38.dp)
             .pressable(onClick = onClick)
-            .pageGlass(CircleShape, c.surfaceContainerHigh),
+            .then(
+                if (settingsGlass != null) {
+                    Modifier.ownLayerGlass(settingsGlass, CircleShape, c.surfaceContainerHigh)
+                } else {
+                    Modifier.pageGlass(CircleShape, c.surfaceContainerHigh)
+                },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription, tint = c.onSurface, modifier = Modifier.size(20.dp))

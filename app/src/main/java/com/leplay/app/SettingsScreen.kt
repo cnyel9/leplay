@@ -102,7 +102,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -127,7 +129,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import java.io.File
+
+/**
+ * The Settings screens' own backdrop layer (0.0.8-test3 rebuild 123).
+ * Settings lives inside the layer the app-wide page backdrop records, so
+ * its cards must never refract that backdrop (the first test-3 build
+ * crashed doing exactly that). Instead each Settings page records its OWN
+ * layer, the CollapsingHeaderLayout pattern, and its cards refract that
+ * with the full 0.0.1 glass engine. Null outside Settings pages, where
+ * surfaces fall back to the shared pageGlass path.
+ */
+val LocalSettingsBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 @Composable
 fun SettingsScreen(
@@ -162,7 +178,19 @@ fun SettingsScreen(
     // surface color behind it. Phone layout is unchanged.
     val wideSettings = TvMode.isTv ||
         androidx.compose.ui.platform.LocalConfiguration.current.smallestScreenWidthDp >= 600
+    // Settings' own backdrop layer for real 0.0.1 refraction on its cards:
+    // this Box records the layer, the scrolling column is composed outside
+    // it (below), its cards refract it. Never the page backdrop (see
+    // LocalSettingsBackdrop).
+    val settingsBackdrop = rememberLayerBackdrop()
     Box(modifier = Modifier.fillMaxSize().background(c.surface)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .layerBackdrop(settingsBackdrop)
+                .background(c.surface)
+        )
+        CompositionLocalProvider(LocalSettingsBackdrop provides settingsBackdrop) {
         Column(
             modifier = Modifier
                 .fillMaxHeight()
@@ -326,6 +354,7 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
         }
 
         if (isOverlayOpen) {
@@ -638,10 +667,17 @@ private fun SettingsCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = MaterialTheme.colorScheme
+    val settingsGlass = LocalSettingsBackdrop.current
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .pageGlass(RoundedCornerShape(18.dp), c.surfaceContainerHigh),
+            .then(
+                if (settingsGlass != null) {
+                    Modifier.ownLayerGlass(settingsGlass, RoundedCornerShape(18.dp), c.surfaceContainerHigh)
+                } else {
+                    Modifier.pageGlass(RoundedCornerShape(18.dp), c.surfaceContainerHigh)
+                },
+            ),
         content = content,
     )
 }
@@ -717,10 +753,20 @@ private fun SettingsFloatingDialog(
     val c = MaterialTheme.colorScheme
     BackHandler(onBack = onDismiss)
 
-    Column(
+    // Each sub-screen records its own backdrop layer, like the root page,
+    // so its cards get real 0.0.1 refraction (see LocalSettingsBackdrop).
+    val dialogBackdrop = rememberLayerBackdrop()
+    Box(Modifier.fillMaxSize().background(c.surface)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .layerBackdrop(dialogBackdrop)
+                .background(c.surface)
+        )
+        CompositionLocalProvider(LocalSettingsBackdrop provides dialogBackdrop) {
+        Column(
         modifier = Modifier
-            .fillMaxSize()
-            .background(c.surface),
+            .fillMaxSize(),
     ) {
         BackScreenHeader(onBack = onDismiss) {
             Column(Modifier.weight(1f)) {
@@ -752,6 +798,8 @@ private fun SettingsFloatingDialog(
         ) {
             content()
             Spacer(Modifier.height(24.dp))
+        }
+        }
         }
     }
 }
@@ -2026,10 +2074,17 @@ private fun SettingsProfileCard(
         label = "profileChevron",
     )
 
+    val settingsGlass = LocalSettingsBackdrop.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .pageGlass(RoundedCornerShape(18.dp), c.surfaceContainerHigh)
+            .then(
+                if (settingsGlass != null) {
+                    Modifier.ownLayerGlass(settingsGlass, RoundedCornerShape(18.dp), c.surfaceContainerHigh)
+                } else {
+                    Modifier.pageGlass(RoundedCornerShape(18.dp), c.surfaceContainerHigh)
+                },
+            )
             .padding(vertical = 2.dp)
     ) {
         Row(
