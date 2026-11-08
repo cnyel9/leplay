@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -78,13 +79,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
@@ -575,24 +576,15 @@ private fun MusicScreenHeader(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
+        // The LePlay Music header carries the app icon itself (same mark
+        // as the launcher and the main header), not a separate glyph.
+        Image(
+            painter = painterResource(R.drawable.ic_brand),
+            contentDescription = null,
             modifier = Modifier
-                .size(34.dp, 26.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(
-                    Brush.linearGradient(
-                        listOf(Color(0xFFFF0033), Color(0xFFFF5E62)),
-                    ),
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                Icons.Rounded.MusicNote,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(17.dp),
-            )
-        }
+                .size(32.dp)
+                .clip(RoundedCornerShape(8.dp)),
+        )
         Spacer(Modifier.width(10.dp))
         Text(
             text = "LePlay Music",
