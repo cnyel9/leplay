@@ -92,7 +92,14 @@ object GlassSettings {
         val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).also { prefs = it }
         enabled = p.getBoolean(KEY, true)
         liteMode = p.getBoolean(KEY_LITE_MODE, false)
-        GlassQuality.setEnabled(enabled)
+        // Single-switch model (owner decision 8 Nov 2026): Liquid Glass ON is
+        // the only glass state, Liquid Glass OFF means Lite Mode. Normalize
+        // legacy two-switch installs once so enabled == !liteMode from here on.
+        val glassOn = enabled && !liteMode
+        enabled = glassOn
+        liteMode = !glassOn
+        p.edit().putBoolean(KEY, enabled).putBoolean(KEY_LITE_MODE, liteMode).apply()
+        GlassQuality.recompute()
     }
 
     fun updateEnabled(value: Boolean) {
@@ -105,6 +112,12 @@ object GlassSettings {
         liteMode = value
         prefs?.edit()?.putBoolean(KEY_LITE_MODE, value)?.apply()
         GlassQuality.recompute()
+    }
+
+    /** The single user-facing switch: glass on, or Lite Mode. No third state. */
+    fun setGlass(on: Boolean) {
+        updateEnabled(on)
+        updateLiteMode(!on)
     }
 }
 

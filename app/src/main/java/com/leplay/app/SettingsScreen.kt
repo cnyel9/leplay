@@ -861,30 +861,13 @@ private fun AppearanceThemeContent(context: Context) {
     ) {
         SettingsSwitchRow(
             title = I18n.t("liquid_glass", "Liquid Glass"),
-            subtitle = if (GlassSettings.enabled) {
+            subtitle = if (GlassSettings.enabled && !GlassSettings.liteMode) {
                 I18n.t("liquid_glass_sub_on", "Frosted, see-through surfaces with depth and blur")
             } else {
-                I18n.t("liquid_glass_sub_off", "Using solid Material surfaces with no transparency")
+                I18n.t("lite_mode_sub", "Solid surfaces, animations off, no Shorts preloading")
             },
             checked = GlassSettings.enabled && !GlassSettings.liteMode,
-            onCheckedChange = { GlassSettings.updateEnabled(it) },
-            enabled = !GlassSettings.liteMode,
-        )
-
-        if (GlassSettings.liteMode) {
-            Text(
-                text = I18n.t("liquid_glass_blocked_by_lite", "Liquid Glass is off while Lite Mode is on. Turn off Lite Mode to use it."),
-                style = MaterialTheme.typography.bodySmall,
-                color = c.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 6.dp),
-            )
-        }
-
-        SettingsSwitchRow(
-            title = I18n.t("lite_mode", "Lite Mode"),
-            subtitle = I18n.t("lite_mode_sub", "Solid surfaces, animations off, no Shorts preloading"),
-            checked = GlassSettings.liteMode,
-            onCheckedChange = { GlassSettings.updateLiteMode(it) },
+            onCheckedChange = { GlassSettings.setGlass(it) },
         )
 
         HorizontalDivider(color = c.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 4.dp))
