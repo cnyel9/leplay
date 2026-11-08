@@ -830,7 +830,7 @@ fun ShortsScreen(
                             backdrop = backdrop,
                             glass = glass,
                             autoScroll = ShortsSettings.autoScroll,
-                            onToggleAutoScroll = { ShortsSettings.setAutoScroll(!ShortsSettings.autoScroll) },
+                            onToggleAutoScroll = { ShortsSettings.setAutoScrollEnabled(!ShortsSettings.autoScroll) },
                         )
                     }
 

@@ -84,7 +84,7 @@ object ShortsSettings {
         prefs?.edit()?.putBoolean(KEY_CLEAN_MODE, on)?.apply()
     }
 
-    fun setAutoScroll(on: Boolean) {
+    fun setAutoScrollEnabled(on: Boolean) {
         autoScroll = on
         prefs?.edit()?.putBoolean(KEY_AUTO_SCROLL, on)?.apply()
     }
