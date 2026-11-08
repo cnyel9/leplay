@@ -277,6 +277,27 @@ fun Modifier.pageGlass(shape: Shape, solid: Color, tintAlpha: Float = 0.45f): Mo
                 refractionAmount = 16.dp,
             ),
         )
+    } else if (GlassQuality.effectsSupported) {
+        // Glass is ON but this subtree has no backdrop it may refract.
+        // Some screens live INSIDE the layer another backdrop records
+        // (Settings sits inside the page backdrop's layer): drawing that
+        // backdrop from in there feeds the layer into itself and crashes
+        // the app on open (0.0.8-test3 crash, fixed in the 122 rebuild).
+        // The frosted approximation gives those screens the glass look
+        // with no backdrop at all.
+        this
+            .clip(shape)
+            .background(solid.copy(alpha = 0.55f))
+            .drawBehind {
+                drawRect(
+                    Brush.verticalGradient(
+                        0f to Color.White.copy(alpha = 0.14f),
+                        0.55f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.05f),
+                    ),
+                )
+            }
+            .border(1.dp, Color.White.copy(alpha = 0.16f), shape)
     } else {
         this.clip(shape).background(solid)
     }
