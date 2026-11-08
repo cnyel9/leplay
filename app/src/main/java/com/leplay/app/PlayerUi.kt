@@ -567,14 +567,14 @@ private fun VideoStage(state: PlayerState, morph: PlayerMorph, onCollapse: () ->
     LaunchedEffect(state.portraitTall) {
         if (state.portraitTall) tallTarget = screenAspect
     }
-    LaunchedEffect(tallAspect) {
-        if (!state.portraitTall && screenAspect != tallTarget) tallTarget = screenAspect
-    }
     val tallAspect by animateFloatAsState(
         tallTarget,
         if (reduced) snap() else spring(dampingRatio = 1f, stiffness = 380f),
         label = "tallStageAspect",
     )
+    LaunchedEffect(tallAspect) {
+        if (!state.portraitTall && screenAspect != tallTarget) tallTarget = screenAspect
+    }
     val pullUp = remember { Animatable(0f) }
     val pullDistance = with(LocalDensity.current) { FullscreenPull.toPx() }
 
