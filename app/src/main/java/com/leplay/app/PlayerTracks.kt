@@ -134,7 +134,7 @@ object HapticsSettings {
         enabled = prefs?.getBoolean(KEY_ENABLED, false) ?: false
     }
 
-    fun setEnabled(on: Boolean) {
+    fun setHaptics(on: Boolean) {
         enabled = on
         prefs?.edit()?.putBoolean(KEY_ENABLED, on)?.apply()
     }

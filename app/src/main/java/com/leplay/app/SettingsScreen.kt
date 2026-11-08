@@ -938,7 +938,7 @@ private fun AppearanceThemeContent(context: Context) {
             title = I18n.t("haptics", "Haptics"),
             subtitle = I18n.t("haptics_sub", "Vibrate on taps and controls"),
             checked = HapticsSettings.enabled,
-            onCheckedChange = { HapticsSettings.setEnabled(it) },
+            onCheckedChange = { HapticsSettings.setHaptics(it) },
         )
 
         HorizontalDivider(color = c.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 4.dp))
