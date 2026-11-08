@@ -425,7 +425,13 @@ fun PlayerScreen(
             }
         } else {
         Column(Modifier.fillMaxSize()) {
-            Spacer(Modifier.height(top))
+            if (state.portraitTall) {
+                // Fullscreen vertical mode: no status-bar spacer either
+                // (0.0.8-test3), so the stage truly starts at the top
+                // edge of the screen instead of one inset below it.
+            } else {
+                Spacer(Modifier.height(top))
+            }
 
 
             Box(Modifier.zIndex(2f)) {
@@ -550,8 +556,22 @@ private fun VideoStage(state: PlayerState, morph: PlayerMorph, onCollapse: () ->
         if (reduced) snap() else spring(dampingRatio = 1f, stiffness = 380f),
         label = "stageAspect",
     )
+    // The tall spring's target is the FROZEN aspect for the whole
+    // transition (0.0.8-test3): live onSizeChanged measurements update
+    // screenAspect continuously, but the animation only retargets when
+    // tall mode is entered or left, or once the stage has settled at
+    // rest. Feeding measurements back into the running spring was the
+    // tall-mode glitch: the video shrank mid-screen and wandered for
+    // seconds before stabilising.
+    var tallTarget by remember { mutableFloatStateOf(TallStageAspect) }
+    LaunchedEffect(state.portraitTall) {
+        if (state.portraitTall) tallTarget = screenAspect
+    }
+    LaunchedEffect(tallAspect) {
+        if (!state.portraitTall && screenAspect != tallTarget) tallTarget = screenAspect
+    }
     val tallAspect by animateFloatAsState(
-        screenAspect,
+        tallTarget,
         if (reduced) snap() else spring(dampingRatio = 1f, stiffness = 380f),
         label = "tallStageAspect",
     )

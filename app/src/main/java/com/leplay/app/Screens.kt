@@ -174,8 +174,7 @@ fun HomeFilterChips(
             )
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(chipBg)
+                    .then(if (isSelected) Modifier.clip(RoundedCornerShape(8.dp)).background(chipBg) else Modifier.pageGlass(RoundedCornerShape(8.dp), chipBg))
                     .pressable(pressedScale = 0.94f) { onSelect(filter) }
                     .padding(horizontal = 14.dp, vertical = 7.dp),
                 contentAlignment = Alignment.Center,
@@ -310,17 +309,15 @@ fun SubFilterChips(
     ) {
         SubFilter.entries.forEach { filter ->
             val isSelected = filter == selected
+            val subChipBg = when {
+                isSelected -> if (isDark || isAmoled) Color.White else Color.Black
+                isAmoled -> Color(0xFF161616)
+                isDark -> Color(0xFF272727)
+                else -> Color(0xFFE5E5E5)
+            }
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        when {
-                            isSelected -> if (isDark || isAmoled) Color.White else Color.Black
-                            isAmoled -> Color(0xFF161616)
-                            isDark -> Color(0xFF272727)
-                            else -> Color(0xFFE5E5E5)
-                        }
-                    )
+                    .then(if (isSelected) Modifier.clip(RoundedCornerShape(8.dp)).background(subChipBg) else Modifier.pageGlass(RoundedCornerShape(8.dp), subChipBg))
                     .pressable(pressedScale = 0.94f) { onSelect(filter) }
                     .padding(horizontal = 14.dp, vertical = 7.dp),
                 contentAlignment = Alignment.Center,
@@ -1085,15 +1082,23 @@ class SearchState(private val scope: CoroutineScope) {
                     }
                     .onFailure { error = YouTube.friendlyError(it) }
                 // The server's upload-date sort only tilts relevance
-                // towards recency, so up to 3 pages are collected and
+                // towards recency, so more pages are collected and
                 // re-ranked client-side by parsed upload age to make
-                // "Latest" honest inside the loaded window. Pages
-                // appended later via loadMore stay in server order.
+                // "Latest" honest inside the loaded window. The FIRST
+                // page is published as soon as it lands, re-ranked on its
+                // own, so the user sees results after one round trip
+                // instead of three (0.0.8-test3: users called Latest
+                // laggy); the remaining pages then merge in and the whole
+                // window is re-ranked again. Pages appended later via
+                // loadMore stay in server order.
                 SearchSort.Latest -> runCatching {
                     val collected = ArrayList<VideoItem>()
                     var page = InnerTube.searchVideos(q, SEARCH_PARAMS_LATEST)
                     var token: String? = page.next
                     collected.addAll(page.videos)
+                    results = collected.sortedBy { uploadAgeMinutes(it.uploaded) }
+                    nextToken = token
+                    generation++
                     var fetched = 1
                     while (collected.size < 48 && token != null && fetched < 3) {
                         page = InnerTube.searchVideosPage(token)
@@ -1106,7 +1111,11 @@ class SearchState(private val scope: CoroutineScope) {
                     results = collected.sortedBy { uploadAgeMinutes(it.uploaded) }
                     nextToken = token
                     generation++
-                }.onFailure { error = YouTube.friendlyError(it) }
+                }.onFailure {
+                    // A later page failing must not erase the first page
+                    // that is already on screen.
+                    if (results.isEmpty()) error = YouTube.friendlyError(it)
+                }
             }
             loading = false
         }
@@ -1217,8 +1226,7 @@ fun SearchSortChips(selected: SearchSort, onSelect: (SearchSort) -> Unit, modifi
             Box(
                 modifier = Modifier
                     .graphicsLayer { scaleX = scale; scaleY = scale }
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(background)
+                    .then(if (isSelected) Modifier.clip(RoundedCornerShape(8.dp)).background(background) else Modifier.pageGlass(RoundedCornerShape(8.dp), background))
                     .pressable(pressedScale = 0.94f) { onSelect(sort) }
                     .padding(horizontal = 14.dp, vertical = 7.dp),
                 contentAlignment = Alignment.Center,
@@ -1291,8 +1299,7 @@ fun SearchScreen(
                     modifier = Modifier
                         .weight(1f)
                         .height(48.dp)
-                        .clip(CircleShape)
-                        .background(c.surfaceContainerHigh)
+                        .pageGlass(CircleShape, c.surfaceContainerHigh)
                         .padding(start = 16.dp, end = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

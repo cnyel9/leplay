@@ -109,11 +109,30 @@ class PlayerState(private val scope: CoroutineScope) {
     var videoZoom by mutableFloatStateOf(1f)
     var zoomToFill by mutableStateOf(false)
 
-    fun resetZoom() { videoZoom = 1f; zoomToFill = false }
+    /** Stretch display mode (0.0.8-test3): the video fills the whole frame
+     *  with no crop and no bars, at the cost of aspect distortion. Mutually
+     *  exclusive with [zoomToFill]; the fullscreen button cycles
+     *  fit -> crop-fill -> stretch. */
+    var zoomStretch by mutableStateOf(false)
+
+    fun resetZoom() { videoZoom = 1f; zoomToFill = false; zoomStretch = false }
 
     fun toggleZoomToFill() {
-        zoomToFill = !zoomToFill
-        actionMessage = if (zoomToFill) I18n.t("zoomed_to_fill", "Zoomed to fill screen") else I18n.t("fit_to_screen", "Fit to screen")
+        when {
+            zoomStretch -> {
+                zoomStretch = false
+                actionMessage = I18n.t("fit_to_screen", "Fit to screen")
+            }
+            zoomToFill -> {
+                zoomToFill = false
+                zoomStretch = true
+                actionMessage = I18n.t("stretched_to_fill", "Stretched to fill screen")
+            }
+            else -> {
+                zoomToFill = true
+                actionMessage = I18n.t("zoomed_to_fill", "Zoomed to fill screen")
+            }
+        }
     }
 
     fun toggleAutoPlay() {
@@ -626,6 +645,8 @@ class PlayerState(private val scope: CoroutineScope) {
         captionText = null
         speedPanelOpen = false
         videoZoom = 1f
+        zoomToFill = false
+        zoomStretch = false
         portraitFullscreen = false
         if (item.localUri != null) {
 
@@ -1566,6 +1587,13 @@ class PlayerState(private val scope: CoroutineScope) {
         }
 
         override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+            // The side-loaded cue list owns the overlay whenever it exists
+            // (0.0.8-test3): the player's own text output carries the same
+            // VTT cues whenever a text track is active, and letting both
+            // write captionText made the text flicker and swap late. When no
+            // side-loaded list exists (e.g. embedded tracks) the player
+            // output still drives the overlay as before.
+            if (activeCues.isNotEmpty()) return
             val text = cueGroup.cues
                 .mapNotNull { cue -> cue.text?.toString()?.takeIf { it.isNotBlank() } }
                 .joinToString("\n")

@@ -181,8 +181,7 @@ fun CircleAction(icon: ImageVector, contentDescription: String, onClick: () -> U
         modifier = Modifier
             .size(38.dp)
             .pressable(onClick = onClick)
-            .clip(CircleShape)
-            .background(c.surfaceContainerHigh),
+            .pageGlass(CircleShape, c.surfaceContainerHigh),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription, tint = c.onSurface, modifier = Modifier.size(20.dp))

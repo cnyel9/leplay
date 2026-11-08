@@ -641,8 +641,7 @@ private fun SettingsCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(c.surfaceContainerHigh),
+            .pageGlass(RoundedCornerShape(18.dp), c.surfaceContainerHigh),
         content = content,
     )
 }
@@ -2030,8 +2029,7 @@ private fun SettingsProfileCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(c.surfaceContainerHigh)
+            .pageGlass(RoundedCornerShape(18.dp), c.surfaceContainerHigh)
             .padding(vertical = 2.dp)
     ) {
         Row(

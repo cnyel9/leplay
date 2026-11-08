@@ -530,11 +530,16 @@ fun VideoContent(
                 .clipToBounds()
                 .transformable(state = zoomState),
         ) {
+            // Stretch mode (0.0.8-test3) skips aspectFit entirely: the
+            // surface takes the whole frame on both axes, so nothing is
+            // cropped and no bars remain (aspect distortion is the price).
+            val stretchModifier = if (state.zoomStretch) Modifier.fillMaxSize()
+                else Modifier.aspectFit(state.videoAspect, cover = state.zoomToFill || (state.portraitTall && !fullscreen))
             Box(
                 Modifier
                     .fillMaxSize()
                     .layerBackdrop(videoBackdrop)
-                    .aspectFit(state.videoAspect, cover = state.zoomToFill || (state.portraitTall && !fullscreen))
+                    .then(stretchModifier)
                     .graphicsLayer {
                         val n = nudge.value
                         translationX = burstSide * 5.dp.toPx() * n
@@ -710,12 +715,16 @@ fun VideoContent(
                     // bottom right is the only expand affordance.
                     if (fullscreen) {
                         GlassButton(
-                            if (state.zoomToFill) Icons.Rounded.AspectRatio else Icons.Rounded.CropFree,
-                            if (state.zoomToFill) I18n.t("fit_to_screen", "Fit to screen") else I18n.t("zoom_to_fill", "Fill screen"),
+                            if (state.zoomToFill || state.zoomStretch) Icons.Rounded.AspectRatio else Icons.Rounded.CropFree,
+                            when {
+                                state.zoomStretch -> I18n.t("fit_to_screen", "Fit to screen")
+                                state.zoomToFill -> I18n.t("stretch_to_fill", "Stretch to fill screen")
+                                else -> I18n.t("zoom_to_fill", "Fill screen")
+                            },
                             enabled,
                             size = 32.dp,
                             iconSize = 18.dp,
-                            tinted = state.zoomToFill,
+                            tinted = state.zoomToFill || state.zoomStretch,
                             backdrop = videoBackdrop,
                         ) {
                             touched()

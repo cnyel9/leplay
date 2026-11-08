@@ -37,6 +37,7 @@ object SubtitleParser {
             trimmed.startsWith("WEBVTT") || trimmed.contains("-->") -> parseVtt(trimmed)
             trimmed.contains("<p ") || trimmed.contains("<p>") -> parseTtml(trimmed)
             trimmed.contains("<text ") -> parseXml(trimmed)
+            trimmed.startsWith("{") -> parseJson3(trimmed)
             else -> emptyList()
         }
     }
@@ -113,6 +114,40 @@ object SubtitleParser {
             if (text.isNotBlank()) {
                 cues.add(ParsedCue(start, end, text))
             }
+        }
+        return cues
+    }
+
+    /** YouTube timedtext json3: {"events":[{"tStartMs":..,"dDurationMs":..,
+     *  "segs":[{"utf8":".."}]}]}. Some subtitle URLs serve this instead of
+     *  VTT; without this branch those tracks parsed to zero cues and the
+     *  overlay silently fell back to the player's own text output
+     *  (0.0.8-test3). Rolling ASR windows repeat the previous line inside
+     *  the next event; the duplicated first segment is dropped so lines do
+     *  not stack. */
+    private fun parseJson3(raw: String): List<ParsedCue> {
+        val root = runCatching { org.json.JSONObject(raw) }.getOrNull() ?: return emptyList()
+        val events = root.optJSONArray("events") ?: return emptyList()
+        val cues = mutableListOf<ParsedCue>()
+        var previousText: String? = null
+        for (i in 0 until events.length()) {
+            val ev = events.optJSONObject(i) ?: continue
+            val segs = ev.optJSONArray("segs") ?: continue
+            val start = ev.optLong("tStartMs", -1L)
+            if (start < 0L) continue
+            val dur = ev.optLong("dDurationMs", 2_000L)
+            val parts = ArrayList<String>()
+            for (j in 0 until segs.length()) {
+                val segText = segs.optJSONObject(j)?.optString("utf8").orEmpty()
+                if (segText.isNotEmpty()) parts.add(segText)
+            }
+            var text = cleanText(parts.joinToString(""))
+            val prev = previousText
+            if (prev != null && text.length > prev.length && text.startsWith(prev)) {
+                text = text.substring(prev.length).trim()
+            }
+            previousText = cleanText(parts.joinToString(""))
+            if (text.isNotBlank()) cues.add(ParsedCue(start, start + dur, text))
         }
         return cues
     }

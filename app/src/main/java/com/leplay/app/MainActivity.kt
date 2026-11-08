@@ -755,6 +755,9 @@ fun LePlayTubeApp() {
             enter = if (reduced) fadeIn(snap()) else slideInHorizontally(tween(340, easing = Motion.Emphasized)) { it } + fadeIn(tween(120)),
             exit = if (reduced) fadeOut(snap()) else slideOutHorizontally(tween(300, easing = Motion.Emphasized)) { it } + fadeOut(tween(220)),
         ) {
+            // Settings gets the app page backdrop so its cards can refract
+            // it when Liquid Glass is on (0.0.8-test3); off = solid.
+            CompositionLocalProvider(LocalGlassBackdrop provides pageBackdrop) {
             SettingsScreen(
                 onBack = { openSettings = false },
                 onSignIn = { signingIn = true },
@@ -779,6 +782,7 @@ fun LePlayTubeApp() {
                 contentPadding = PaddingValues(bottom = navBottom),
                 onCheckUpdate = { updateState.check(manual = true) },
             )
+            }
         }
 
 

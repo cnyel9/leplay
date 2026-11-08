@@ -213,15 +213,24 @@ fun Modifier.liquidGlass(backdrop: Backdrop, spec: GlassSpec): Modifier =
             },
         )
     } else {
-        // Android 12 and older (plus low-end TVs without runtime shaders) cannot
-        // render the refractive glass shader. Keep the same frosted surface look
-        // with a translucent fill, soft top sheen and hairline edge instead of
-        // removing the glass entirely.
         fallbackGlass(spec)
     }
 
+/**
+ * Fallback for every liquidGlass call when the shader path is closed.
+ * Two different worlds share this branch and must not be conflated:
+ * (0.0.8-test3 audit)
+ * - Liquid Glass OFF (or Lite Mode): the owner's rule is zero glass
+ *   anywhere, so the surface is a plain fully opaque Material fill.
+ * - Liquid Glass ON but the device cannot run runtime shaders (Android
+ *   12 and older, low-RAM devices): glass was requested, so the frosted
+ *   approximation (translucent fill, top sheen, hairline edge) is kept.
+ * The branch is chosen from the user preference, never from
+ * effectsSupported alone, so an old device with glass ON keeps its
+ * frosted look while a shader-capable device with glass OFF gets none.
+ */
 private fun Modifier.fallbackGlass(spec: GlassSpec): Modifier =
-    if (!GlassQuality.effectsSupported) {
+    if (!GlassSettings.enabled || GlassSettings.liteMode) {
         // Liquid Glass is switched off: a plain, fully opaque Material surface.
         this
             .clip(spec.shape)
@@ -245,3 +254,30 @@ private fun Modifier.fallbackGlass(spec: GlassSpec): Modifier =
             }
             .border(1.dp, Color.White.copy(alpha = 0.16f), spec.shape)
     }
+
+/**
+ * Glass surface for content regions (cards, chips, bars) that have no
+ * backdrop of their own: refracts the app-wide page backdrop when Liquid
+ * Glass is on, and resolves to exactly the given solid colour when it is
+ * off, so call sites keep one code path for both worlds (0.0.8-test3).
+ * The backdrop is null when no provider is in scope; the surface then
+ * degrades to the solid colour instead of crashing.
+ */
+@Composable
+fun Modifier.pageGlass(shape: Shape, solid: Color, tintAlpha: Float = 0.45f): Modifier {
+    val backdrop = if (GlassQuality.effectsSupported) LocalGlassBackdrop.current else null
+    return if (backdrop != null) {
+        this.liquidGlass(
+            backdrop,
+            glassSpec(
+                shape = shape,
+                tint = solid.copy(alpha = tintAlpha),
+                blur = 18.dp,
+                refractionHeight = 12.dp,
+                refractionAmount = 16.dp,
+            ),
+        )
+    } else {
+        this.clip(shape).background(solid)
+    }
+}
