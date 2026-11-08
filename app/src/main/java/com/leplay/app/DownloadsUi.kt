@@ -389,10 +389,7 @@ private fun DownloadRow(task: DownloadTask, onOpen: (() -> Unit)?) {
                     Modifier
                         .size(34.dp)
                         .clip(CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                        ) { menu = true },
+                        .pressable { menu = true },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(Icons.Rounded.MoreVert, I18n.t("more_options", "More options"), tint = c.onSurfaceVariant, modifier = Modifier.size(20.dp))

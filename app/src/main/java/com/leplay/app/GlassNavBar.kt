@@ -51,6 +51,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -431,6 +433,12 @@ fun RowScope.LiquidNavTab(
 ) {
     val isLightTheme = !isDarkSurface && !isSystemInDarkTheme() && ThemeSettings.mode != "dark" && ThemeSettings.mode != "amoled"
     val contentColor = if (isLightTheme) Color.Black else Color.White
+    // On TV, land the D-pad focus on the selected tab so the remote has a
+    // predictable starting point whenever the tab changes.
+    val tabFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(selected) {
+        if (selected && TvMode.isTv) runCatching { tabFocusRequester.requestFocus() }
+    }
     val active = tab == Tab.Downloads && Downloads.busy
     val labelColor by animateColorAsState(
         targetValue = if (selected) contentColor else contentColor.copy(alpha = 0.72f),
@@ -438,7 +446,7 @@ fun RowScope.LiquidNavTab(
         label = "navLabelColor",
     )
 
-    LiquidBottomTab(onClick = onClick) {
+    LiquidBottomTab(onClick = onClick, modifier = Modifier.focusRequester(tabFocusRequester)) {
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier.size(28.dp)

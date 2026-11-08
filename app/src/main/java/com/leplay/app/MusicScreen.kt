@@ -13,7 +13,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
@@ -82,6 +83,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -196,6 +198,8 @@ fun MusicScreen(
     onStartRadio: (VideoItem) -> Unit = {},
     onStartPlaylistRadio: (String) -> Unit = {},
     onOpenQueue: (List<VideoItem>, Int) -> Unit = { list, index -> list.getOrNull(index)?.let(onOpen) },
+    onOpenLooseQueue: (List<VideoItem>, Int) -> Unit = onOpenQueue,
+    onOpenBoundQueue: (List<VideoItem>, Int) -> Unit = onOpenQueue,
     scrollToTop: Int = 0,
 ) {
     val scope = rememberCoroutineScope()
@@ -343,7 +347,7 @@ fun MusicScreen(
                 results = searchResults,
                 loading = searchLoading,
                 suggestions = searchSuggestions,
-                onOpenTrack = { _, index -> onOpenQueue(searchResults, index) },
+                onOpenTrack = { _, index -> onOpenLooseQueue(searchResults, index) },
                 onDownloadTrack = ::downloadAudio,
                 contentPadding = contentPadding,
             )
@@ -407,7 +411,7 @@ fun MusicScreen(
                                             Box(if (GlassSettings.liteMode) Modifier else Modifier.animateItem()) {
                                                 MusicTrackSquareCard(
                                                     video = video,
-                                                    onClick = { onOpenQueue(state.recentPlays, index) },
+                                                    onClick = { onOpenLooseQueue(state.recentPlays, index) },
                                                     onOptions = { trackOptionsFor = video },
                                                 )
                                             }
@@ -433,7 +437,7 @@ fun MusicScreen(
                                             Box(if (GlassSettings.liteMode) Modifier else Modifier.animateItem()) {
                                                 MusicTrackSquareCard(
                                                     video = video,
-                                                    onClick = { onOpenQueue(state.likedTracks, index) },
+                                                    onClick = { onOpenLooseQueue(state.likedTracks, index) },
                                                     onOptions = { trackOptionsFor = video },
                                                 )
                                             }
@@ -473,7 +477,7 @@ fun MusicScreen(
 
 
                                                         val index = directTracks.indexOfFirst { it.id == direct.id }
-                                                        onOpenQueue(directTracks, if (index >= 0) index else 0)
+                                                        onOpenLooseQueue(directTracks, if (index >= 0) index else 0)
                                                     } else {
 
                                                         loadMix(item)
@@ -537,7 +541,7 @@ fun MusicScreen(
                 contentPadding = contentPadding,
                 onBack = { mix = null },
                 onRetry = { loadMix(selected) },
-                onOpenSong = { index -> onOpenQueue(mixSongs, index) },
+                onOpenSong = { index -> onOpenBoundQueue(mixSongs, index) },
                 onDownloadSong = ::downloadAudio,
                 onOptions = { trackOptionsFor = it },
                 onStartRadio = {
@@ -720,7 +724,7 @@ fun MusicTrackOptionsSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable {
+                    .pressable(pressedScale = 0.98f) {
                         onPlayNext()
                         onDismiss()
                     }
@@ -747,7 +751,7 @@ fun MusicTrackOptionsSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable {
+                    .pressable(pressedScale = 0.98f) {
                         onStartRadio()
                         onDismiss()
                     }
@@ -774,7 +778,7 @@ fun MusicTrackOptionsSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable {
+                    .pressable(pressedScale = 0.98f) {
                         onDownloadAudio()
                         onDismiss()
                     }
@@ -808,7 +812,7 @@ fun MusicTrackOptionsSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable {
+                    .pressable(pressedScale = 0.98f) {
                         onShare()
                         onDismiss()
                     }
@@ -980,6 +984,11 @@ private fun DedicatedMusicSearchView(
     val isAmoled = ThemeSettings.mode == "amoled"
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val startVoiceSearch = rememberVoiceSearchLauncher { text ->
+        onQueryChange(text)
+        keyboardController?.hide()
+        onSearchSubmit(text)
+    }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -1080,6 +1089,17 @@ private fun DedicatedMusicSearchView(
                             )
                         }
                     }
+                    IconButton(
+                        onClick = { startVoiceSearch() },
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.Mic,
+                            contentDescription = I18n.t("voice_search", "Voice search"),
+                            tint = c.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
                 }
             }
         }
@@ -1092,8 +1112,14 @@ private fun DedicatedMusicSearchView(
                 }
             }
             results.isNotEmpty() -> {
+                val wideSearchList = TvMode.isTv || LocalConfiguration.current.screenWidthDp >= 640
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = if (wideSearchList) {
+                        Modifier.fillMaxHeight().widthIn(max = 860.dp)
+                    } else {
+                        Modifier.fillMaxSize()
+                    },
                     contentPadding = contentPadding,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -1117,6 +1143,7 @@ private fun DedicatedMusicSearchView(
                         }
                     }
                 }
+                }
             }
             suggestions.isNotEmpty() && query.isNotEmpty() -> {
                 LazyColumn(
@@ -1127,7 +1154,7 @@ private fun DedicatedMusicSearchView(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
+                                .pressable(pressedScale = 0.98f) {
                                     keyboardController?.hide()
                                     onSearchSubmit(sugg)
                                 }
@@ -1187,7 +1214,7 @@ private fun DedicatedMusicSearchView(
                                             else if (isDark) Color(0xFF26262A)
                                             else Color(0xFFE8E8EE),
                                         )
-                                        .clickable {
+                                        .pressable {
                                             keyboardController?.hide()
                                             onSearchSubmit(tag)
                                         }
@@ -1220,7 +1247,7 @@ private fun MusicSearchResultRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .pressable(pressedScale = 0.98f, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1423,10 +1450,16 @@ private fun MusicMixScreen(
                     title = I18n.t("music_no_songs_title", "No songs here"),
                     body = I18n.t("music_no_songs_body", "This mix didn't return any playable songs."),
                 )
-                else -> LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = contentPadding,
-                ) {
+                else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                    val wideMixList = TvMode.isTv || LocalConfiguration.current.screenWidthDp >= 640
+                    LazyColumn(
+                        modifier = if (wideMixList) {
+                            Modifier.fillMaxHeight().widthIn(max = 860.dp)
+                        } else {
+                            Modifier.fillMaxSize()
+                        },
+                        contentPadding = contentPadding,
+                    ) {
                     itemsIndexed(songs, key = { _, song -> "mix_" + song.id }) { index, song ->
                         Box(if (GlassSettings.liteMode) Modifier else Modifier.animateItem()) {
                             MusicMixSongRow(
@@ -1439,6 +1472,7 @@ private fun MusicMixScreen(
                         }
                     }
                     item(key = "mix_bottom") { Spacer(Modifier.height(24.dp)) }
+                    }
                 }
             }
         }
@@ -1457,7 +1491,7 @@ private fun MusicMixSongRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .pressable(pressedScale = 0.98f, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

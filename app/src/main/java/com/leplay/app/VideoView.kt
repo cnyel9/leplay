@@ -103,6 +103,8 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalView
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -265,6 +267,12 @@ fun VideoContent(
     LaunchedEffect(state.current?.id) {
         state.current?.id?.let { ScrubStoryboards.preload(it) }
     }
+    // On TV, land initial focus on the play button when the player
+    // becomes interactive, mirroring the ShortsScreen pattern.
+    val playFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(interactive) {
+        if (TvMode.isTv && interactive) runCatching { playFocusRequester.requestFocus() }
+    }
     val tvKeys = Modifier.onPreviewKeyEvent { e ->
         if (!TvMode.isTv || !interactive || e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
         when (e.key) {
@@ -286,6 +294,14 @@ fun VideoContent(
                 touched()
                 true
             }
+            // NOTE: D-pad Left/Right are deliberately NOT seek keys here.
+            // This is an onPreviewKeyEvent handler: consuming Left/Right
+            // while the controls are visible would starve D-pad focus
+            // traversal between the (horizontal) transport buttons, which
+            // is the primary TV navigation requirement. Remote seek stays
+            // on the MediaFastForward/MediaRewind keys above and on the
+            // on-screen -10s/+10s buttons. Left/Right fall through to the
+            // else branch (reveal controls when hidden, focus otherwise).
             else -> {
                 val dpad = e.key == Key.DirectionUp || e.key == Key.DirectionDown ||
                     e.key == Key.DirectionLeft || e.key == Key.DirectionRight ||
@@ -655,6 +671,16 @@ fun VideoContent(
                     }
 
 
+                    // Audio track lives here in the player chrome: its row
+                    // was removed from the settings sheet (0.0.7-test2), and
+                    // this button is the sheet's only launcher.
+                    GlassButton(Icons.Rounded.Headphones, I18n.t("audio_track", "Audio track"), enabled, size = 32.dp, iconSize = 20.dp, backdrop = videoBackdrop) {
+                        touched()
+                        state.sheet = PlayerSheet.Audio
+                    }
+                    Spacer(Modifier.width(6.dp))
+
+
                     GlassButton(Icons.Rounded.Settings, I18n.t("playback_settings", "Playback settings"), enabled, size = 32.dp, iconSize = 20.dp, backdrop = videoBackdrop) {
                         touched()
                         state.sheet = PlayerSheet.Settings
@@ -692,6 +718,7 @@ fun VideoContent(
                         enabled = enabled,
                         backdrop = playGlass,
                         glass = true,
+                        modifier = Modifier.focusRequester(playFocusRequester),
                     ) { touched(); state.togglePlay() }
                     GlassButton(Icons.Rounded.Forward10, I18n.t("forward_10_seconds", "Forward 10 seconds"), enabled, size = skip, iconSize = skip * 0.6f, backdrop = videoBackdrop) {
                         touched(); state.seekBy(10_000)
@@ -1299,26 +1326,6 @@ fun PlayerSettingsSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () ->
                 )
 
 
-                PlayerSettingItem(
-                    icon = Icons.Rounded.Speed,
-                    title = I18n.t("playback_speed", "Playback speed"),
-                    value = if (state.speed == 1f) I18n.t("playback_speed_normal", "Normal (1.0×)") else "${state.speed}×",
-                    onClick = {
-                        onDismiss()
-                        state.sheet = PlayerSheet.Speed
-                    }
-                )
-
-                PlayerSettingItem(
-                    icon = Icons.Rounded.Headphones,
-                    title = I18n.t("audio_track", "Audio track"),
-                    value = AudioTrackPreference.label.ifBlank { I18n.t("original", "Original") },
-                    onClick = {
-                        onDismiss()
-                        state.sheet = PlayerSheet.Audio
-                    }
-                )
-
                 val captionsText = if (state.selectedSubtitleLanguage != null) I18n.t("on", "On") else I18n.t("off", "Off")
                 PlayerSettingItem(
                     icon = Icons.Rounded.Subtitles,
@@ -1347,14 +1354,6 @@ fun PlayerSettingsSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () ->
                 )
 
 
-                PlayerSettingItem(
-                    icon = if (state.zoomToFill) Icons.Rounded.AspectRatio else Icons.Rounded.CropFree,
-                    title = I18n.t("video_aspect", "Video aspect"),
-                    value = if (state.zoomToFill) I18n.t("zoom_to_fill", "Zoom to fill") else I18n.t("fit_to_screen", "Fit to screen"),
-                    onClick = { state.toggleZoomToFill() }
-                )
-
-
                 val zoomText = if (state.videoZoom > 1.05f) I18n.t("zoom_reset_value", "{zoom}× (Reset)").replace("{zoom}", "${(state.videoZoom * 10).toInt() / 10f}") else "1.0×"
                 PlayerSettingItem(
                     icon = Icons.Rounded.ZoomIn,
@@ -1365,15 +1364,6 @@ fun PlayerSettingsSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () ->
 
                 
 
-
-                state.playingFormat?.let { format ->
-                    PlayerSettingItem(
-                        icon = Icons.Rounded.Info,
-                        title = I18n.t("video_format", "Video format"),
-                        value = format,
-                        onClick = null
-                    )
-                }
 
                 Spacer(Modifier.height(6.dp))
             }
@@ -1581,6 +1571,7 @@ fun MorphPlayButton(
     enabled: Boolean = true,
     backdrop: Modifier = Modifier,
     glass: Boolean = false,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val reduced = rememberReducedMotion() || GlassSettings.liteMode
@@ -1591,7 +1582,7 @@ fun MorphPlayButton(
     )
     val shape = RoundedCornerShape(radius)
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(size)
             .pressable(enabled = enabled, onClick = onClick)
             .clip(shape)

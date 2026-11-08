@@ -264,6 +264,8 @@ fun LePlayTubeApp() {
     val scope = rememberCoroutineScope()
     val search = remember { SearchState(scope) }
     val lib = remember { LibraryData(scope) }
+    // Snapshot bridge for the player's displayed related list (FYP mix).
+    HomeFeedHooks.provider = { lib.home.videos }
     var signingIn by remember { mutableStateOf(false) }
     var openSettings by remember { mutableStateOf(false) }
     var openPlaylist by remember { mutableStateOf<PlaylistRef?>(null) }
@@ -615,6 +617,12 @@ fun LePlayTubeApp() {
                     onStartRadio = player::startRadio,
                     onStartPlaylistRadio = player::startPlaylistRadio,
                     onOpenQueue = { items, index -> player.openMusicQueue(items, index) },
+                    onOpenLooseQueue = { items, index ->
+                        player.openMusicQueue(items, index, source = MusicQueueSource.LooseList)
+                    },
+                    onOpenBoundQueue = { items, index ->
+                        player.openMusicQueue(items, index, source = MusicQueueSource.BoundList)
+                    },
                     scrollToTop = scrollToTop[Tab.Music] ?: 0,
                 )
                 Tab.Shorts -> ShortsScreen(

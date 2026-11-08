@@ -44,6 +44,12 @@ import kotlinx.coroutines.withContext
 sealed interface MusicQueueSource {
     data object None : MusicQueueSource
     data object ListSource : MusicQueueSource
+    /** Loose surface (search, Listen Again, Liked, home direct tracks):
+     *  the tapped song plays, then its radio takes over the queue. */
+    data object LooseList : MusicQueueSource
+    /** Bound surface (playlist/album/channel opened via MusicMixScreen):
+     *  the list plays out first, then radio seeded from the last song. */
+    data object BoundList : MusicQueueSource
     data class RadioSong(val seedId: String) : MusicQueueSource
     data class RadioPlaylist(val playlistId: String) : MusicQueueSource
 }
@@ -54,6 +60,15 @@ sealed interface MusicQueueSource {
 object PlayerNotificationHooks {
     @Volatile var onNext: (() -> Unit)? = null
     @Volatile var onPrevious: (() -> Unit)? = null
+}
+
+/** Same-process bridge so PlayerState can read a snapshot of the home
+ *  feed (FYP / subscriptions mix) for the displayed related list without
+ *  a layering dependency on LibraryData. Snapshot only: when the feed
+ *  was never loaded the provider returns an empty list and the related
+ *  list is shown as-is. */
+object HomeFeedHooks {
+    @Volatile var provider: (() -> List<VideoItem>)? = null
 }
 
 @Stable
@@ -352,12 +367,20 @@ class PlayerState(private val scope: CoroutineScope) {
         isMusicMode = true
         applyVideoTrack()
         musicQueueGeneration++
-        musicQueue = items.drop(index + 1).filter { it.id != item.id }
+        if (source == MusicQueueSource.LooseList) {
+            // Loose surface: only the tapped song plays from the list;
+            // its radio (seeded below) becomes the up-next queue, exactly
+            // like openMusic for a single song.
+            musicQueue = emptyList()
+        } else {
+            musicQueue = items.drop(index + 1).filter { it.id != item.id }
+            // Pre-resolve the first upcoming streams so skipping feels instant.
+            musicQueue.take(2).forEach { StreamCache.prefetch(it.id) }
+        }
         musicContinuation = continuation
         musicQueueSource = source
-        // Pre-resolve the first upcoming streams so skipping feels instant.
-        musicQueue.take(2).forEach { StreamCache.prefetch(it.id) }
         if (expand) expanded = true
+        if (source == MusicQueueSource.LooseList) seedRadioFor(item)
         if (current?.id == item.id && error == null) return
         known[item.id] = item
         show(item, startPlayback = true)
@@ -547,7 +570,7 @@ class PlayerState(private val scope: CoroutineScope) {
                 .onSuccess { d ->
                     Log.i("LePlayTime", "details +${android.os.SystemClock.elapsedRealtime() - openedAt}ms")
                     details = d
-                    displayRelated = diversifyRelated(d.related, item)
+                    displayRelated = interleaveFeed(diversifyRelated(d.related, item), item)
                     // Pre-resolve the likely next streams in the background
                     // so switching tracks does not pay the full lookup cost.
                     val nextIds = if (isMusicMode) {
@@ -710,27 +733,82 @@ class PlayerState(private val scope: CoroutineScope) {
         uploaded = null,
     ).also { known[media.mediaId] = it }
 
-    /** Display-only diversification of a related list: drops entries whose
-     *  normalized title duplicates an earlier kept one and caps each
-     *  channel at 2 entries, keeping server order. */
+    /** Words that carry no identity for a song/video title: versions of
+     *  the same song differ exactly in these (and in word order), so the
+     *  similarity check below ignores them. */
+    private val TITLE_FILLER = setOf(
+        "playlist", "full", "mix",
+        "lyrics", "lyric", "feat", "ft", "featuring",
+        "official", "video", "audio", "hd", "hq", "mv", "visualizer",
+    )
+
+    private fun titleTokens(title: String): Set<String> =
+        title.lowercase()
+            .replace(Regex("[^a-z0-9 ]"), " ")
+            .split(Regex("\\s+"))
+            .filter { it.isNotBlank() && it !in TITLE_FILLER }
+            .toSet()
+
+    /** Same-content test on title token sets using the containment
+     *  (overlap) coefficient: |A∩B| / min(|A|,|B|) >= 0.75. Containment
+     *  catches subset and reordered titles ("Song - Artist" vs
+     *  "Artist - Song (Lyrics)") that a Jaccard index would miss. */
+    private fun sameContent(a: Set<String>, b: Set<String>): Boolean {
+        if (a.isEmpty() || b.isEmpty()) return false
+        val overlap = a.count { it in b }
+        return overlap.toFloat() / minOf(a.size, b.size) >= 0.75f
+    }
+
+    /** Display-only diversification of a related list: drops entries that
+     *  are the same content as the currently playing title or as an
+     *  earlier kept entry (token-set similarity, so reordered or
+     *  re-labelled uploads of the same song collapse to the first one)
+     *  and caps each channel at 2 entries, keeping server order. */
     private fun diversifyRelated(related: List<VideoItem>, currentItem: VideoItem): List<VideoItem> {
-        val seenTitles = HashSet<String>()
+        val keptTokens = ArrayList<Set<String>>()
+        keptTokens.add(titleTokens(currentItem.title))
         val channelCounts = HashMap<String, Int>()
         val out = ArrayList<VideoItem>()
-        val noise = setOf("playlist", "full", "mix")
         for (entry in related) {
             if (entry.id == currentItem.id) continue
-            val normalized = entry.title.lowercase()
-                .replace(Regex("[^a-z0-9 ]"), " ")
-                .split(Regex("\\s+"))
-                .filter { it.isNotBlank() && it !in noise }
-                .joinToString(" ")
-            if (!seenTitles.add(normalized)) continue
+            val tokens = titleTokens(entry.title)
+            if (keptTokens.any { sameContent(tokens, it) }) continue
             val channelKey = entry.channel.lowercase()
             val count = channelCounts.getOrDefault(channelKey, 0)
             if (count >= 2) continue
             channelCounts[channelKey] = count + 1
+            keptTokens.add(tokens)
             out.add(entry)
+        }
+        return out
+    }
+
+    /** Display-only interleave: splices home-feed (FYP) items into the
+     *  collapsed related list, 1 feed item after every 4 related items,
+     *  at most 6 inserts, so "Video lainnya" is not a wall of near
+     *  duplicates. Snapshot only via [HomeFeedHooks]; an empty snapshot
+     *  leaves the list untouched. Never touches details.related, so
+     *  autoplay picks are unaffected. */
+    private fun interleaveFeed(collapsed: List<VideoItem>, currentItem: VideoItem): List<VideoItem> {
+        if (collapsed.isEmpty()) return collapsed
+        val feed = HomeFeedHooks.provider?.invoke().orEmpty()
+        if (feed.isEmpty()) return collapsed
+        val collapsedIds = collapsed.mapTo(HashSet()) { it.id }
+        val currentTokens = titleTokens(currentItem.title)
+        val pool = feed.distinctBy { it.id }.filter { entry ->
+            entry.id != currentItem.id &&
+                entry.id !in collapsedIds &&
+                !sameContent(titleTokens(entry.title), currentTokens)
+        }
+        if (pool.isEmpty()) return collapsed
+        val out = ArrayList<VideoItem>(collapsed.size + 6)
+        var inserted = 0
+        collapsed.forEachIndexed { index, item ->
+            out.add(item)
+            if ((index + 1) % 4 == 0 && inserted < pool.size && inserted < 6) {
+                out.add(pool[inserted])
+                inserted++
+            }
         }
         return out
     }
@@ -791,6 +869,11 @@ class PlayerState(private val scope: CoroutineScope) {
             }
             return
         }
+        // Only dive into radio when a queue context is live; a cleared
+        // queue (source None) must end playback instead of resurrecting.
+        // The seed is `finished` itself, which for a bound list is the
+        // last played song by construction.
+        if (musicQueueSource == MusicQueueSource.None) return
         val finished = curr
         scope.launch {
             runCatching { InnerTube.musicRadio(finished.id) }.onSuccess { page ->

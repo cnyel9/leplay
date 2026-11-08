@@ -17,6 +17,14 @@
     <uses-feature android:name="android.hardware.type.television" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
 
+    <!-- Package visibility for the system speech recognizer used by voice
+         search, so Intent.resolveActivity works on Android 11+. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
+
     <application
         android:name=".LePlayApplication"
         android:allowBackup="false"

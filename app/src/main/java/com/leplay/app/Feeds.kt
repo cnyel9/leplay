@@ -23,8 +23,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -225,6 +231,10 @@ fun FeedList(
     filterScrollKey: Any? = null,
 
     channelAvatarSeed: Map<String, String?> = emptyMap(),
+
+    /** Optional header content for the wide (grid) rendering only; the
+     *  narrow list uses [header]. */
+    gridHeader: (@Composable () -> Unit)? = null,
 ) {
     val c = MaterialTheme.colorScheme
     val listVideos = videos ?: feed.videos
@@ -254,6 +264,66 @@ fun FeedList(
         }
     }
     LaunchedEffect(nearEnd, listVideos.size) { if (nearEnd && listVideos.isNotEmpty()) feed.loadMore() }
+
+    // Wide screens (TV, landscape tablets): the same feed as a card grid
+    // instead of one stretched column. Hooks for the grid are hoisted so
+    // the branch never changes hook order; the narrow path below is
+    // byte-identical to before.
+    val wideFeed = TvMode.isTv || LocalConfiguration.current.screenWidthDp >= 640
+    val gridState = rememberLazyGridState()
+    LaunchedEffect(feed.generation, filterScrollKey) {
+        if (wideFeed) runCatching { gridState.scrollToItem(0) }
+    }
+    val gridNearEnd by remember {
+        derivedStateOf {
+            val info = gridState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            info.totalItemsCount > 0 && last >= info.totalItemsCount - 4
+        }
+    }
+    LaunchedEffect(gridNearEnd, listVideos.size) {
+        if (wideFeed && gridNearEnd && listVideos.isNotEmpty()) feed.loadMore()
+    }
+    if (wideFeed) {
+        val headerContent = gridHeader
+        PullToRefresh(enabled = pullToRefresh, refreshing = feed.refreshing, onRefresh = feed::refresh, topPadding = indicatorTop) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(if (LocalConfiguration.current.screenWidthDp >= 1100) 3 else 2),
+                state = gridState,
+                contentPadding = contentPadding,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            ) {
+                if (headerContent != null) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "feed_grid_header") { headerContent() }
+                }
+                gridItems(listVideos, key = { it.id }) { video ->
+                    VideoCard(video, onClick = { onOpen(video) })
+                }
+                when {
+                    initialLoading -> gridItems(3, key = { "skeleton-$it" }, span = { GridItemSpan(maxLineSpan) }) {
+                        SkeletonVideoCard(skeletonAlpha)
+                    }
+                    feed.error != null && listVideos.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) {
+                        EmptyState(
+                            icon = Icons.Rounded.CloudOff,
+                            title = I18n.t("couldnt_load", "Couldn't load this"),
+                            body = feed.error.orEmpty(),
+                            action = { PillButton(I18n.t("try_again", "Try again"), { feed.refresh() }) },
+                        )
+                    }
+                    feed.loading || feed.hasMore -> item(span = { GridItemSpan(maxLineSpan) }) {
+                        Box(Modifier.fillMaxWidth().padding(28.dp), Alignment.Center) {
+                            CircularProgressIndicator(color = c.primary, strokeWidth = 4.dp, modifier = Modifier.size(32.dp))
+                        }
+                    }
+                }
+            }
+        }
+        return
+    }
+
     PullToRefresh(enabled = pullToRefresh, refreshing = feed.refreshing, onRefresh = feed::refresh, topPadding = indicatorTop) {
     LazyColumn(state = list, contentPadding = contentPadding) {
         header()

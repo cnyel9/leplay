@@ -602,6 +602,21 @@ fun ShortsScreen(
                                             togglePlayback()
                                             true
                                         }
+                                        // The progress bar is touch-only, so
+                                        // the remote's FF/Rew keys seek ±10s.
+                                        Key.MediaFastForward -> {
+                                            val target = (position + 10_000)
+                                                .let { if (duration > 0) it.coerceAtMost(duration) else it }
+                                            exo.seekTo(target)
+                                            position = target
+                                            true
+                                        }
+                                        Key.MediaRewind -> {
+                                            val target = (position - 10_000).coerceAtLeast(0L)
+                                            exo.seekTo(target)
+                                            position = target
+                                            true
+                                        }
                                         Key.DirectionRight -> {
                                             focusManager.moveFocus(FocusDirection.Right)
                                             true

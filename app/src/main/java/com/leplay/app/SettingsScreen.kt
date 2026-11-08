@@ -154,11 +154,17 @@ fun SettingsScreen(
         label = "settingsBlur",
     )
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // On TV / wide tablets the settings column is capped and centered
+    // instead of stretching edge to edge; the Box keeps the full-bleed
+    // surface color behind it. Phone layout is unchanged.
+    val wideSettings = TvMode.isTv ||
+        androidx.compose.ui.platform.LocalConfiguration.current.smallestScreenWidthDp >= 600
+    Box(modifier = Modifier.fillMaxSize().background(c.surface)) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .background(c.surface)
+                .fillMaxHeight()
+                .then(if (wideSettings) Modifier.widthIn(max = 860.dp) else Modifier.fillMaxWidth())
+                .align(Alignment.Center)
                 .then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)
         ) {
             BackScreenHeader(onBack = onBack) {
@@ -737,13 +743,19 @@ private fun VersionHistoryContent() {
     val c = MaterialTheme.colorScheme
     var releases by remember { mutableStateOf<List<ReleaseEntry>?>(null) }
     var failed by remember { mutableStateOf(false) }
+    var errorDetail by remember { mutableStateOf("") }
     var retryTick by remember { mutableIntStateOf(0) }
     LaunchedEffect(retryTick) {
         failed = false
+        errorDetail = ""
         releases = null
         runCatching { fetchReleaseHistory() }
             .onSuccess { releases = it }
-            .onFailure { failed = true }
+            .onFailure { e ->
+                failed = true
+                errorDetail = ((e as? ReleaseHistoryException)?.detail
+                    ?: "${e.javaClass.simpleName}: ${e.message ?: ""}").take(120)
+            }
     }
     when {
         failed -> Column(
@@ -754,6 +766,15 @@ private fun VersionHistoryContent() {
                 I18n.t("release_history_failed", "Could not load version history"),
                 color = c.onSurfaceVariant, fontSize = 14.sp, fontWeight = FontWeight.Medium,
             )
+            if (errorDetail.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    errorDetail,
+                    color = c.onSurfaceVariant.copy(alpha = 0.75f), fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Medium, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                )
+            }
             Spacer(Modifier.height(12.dp))
             PillButton(I18n.t("retry", "Retry"), onClick = { retryTick++ })
         }

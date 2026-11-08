@@ -27,7 +27,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -37,6 +42,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Subscriptions
@@ -257,6 +263,11 @@ fun HomeScreen(
                         item(key = "anon_banner") {
                             AnonHomeBanner(onSignIn = onSignIn, onSearch = onSearch)
                         }
+                    }
+                },
+                gridHeader = {
+                    if (!signedIn) {
+                        AnonHomeBanner(onSignIn = onSignIn, onSearch = onSearch)
                     }
                 },
             )
@@ -676,7 +687,7 @@ fun LibraryScreen(
                             fontSize = 14.sp,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .clickable { onOpenAllSubscriptions() }
+                                .pressable { onOpenAllSubscriptions() }
                                 .padding(horizontal = 8.dp, vertical = 4.dp),
                         )
                     }
@@ -690,7 +701,7 @@ fun LibraryScreen(
                             Column(
                                 modifier = (if (GlassSettings.liteMode) Modifier else Modifier.animateItem())
                                     .width(68.dp)
-                                    .clickable { ch.url?.let(onOpenChannel) },
+                                    .pressable { ch.url?.let(onOpenChannel) },
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 ChannelAvatar(ch.avatar, ch.name, size = 56)
@@ -939,6 +950,10 @@ fun SearchScreen(
         }, 120)
         state.submit()
     }
+    val startVoiceSearch = rememberVoiceSearchLauncher { text ->
+        state.updateQuery(text)
+        submit()
+    }
     Box(Modifier.fillMaxSize().background(c.surface).overlayTouchBlock()) {
 
     CollapsingHeaderLayout(
@@ -993,6 +1008,10 @@ fun SearchScreen(
                             contentAlignment = Alignment.Center,
                         ) { Icon(Icons.Rounded.Close, I18n.t("clear", "Clear"), tint = c.onSurfaceVariant, modifier = Modifier.size(20.dp)) }
                     }
+                    Box(
+                        modifier = Modifier.size(40.dp).pressable { startVoiceSearch() },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Rounded.Mic, I18n.t("voice_search", "Voice search"), tint = c.onSurfaceVariant, modifier = Modifier.size(20.dp)) }
                 }
             }
         },
@@ -1183,6 +1202,34 @@ fun SearchScreen(
             else -> {
                 val list = rememberScrollToTop(scrollToTop)
                 LaunchedEffect(state.generation) { list.scrollToItem(0) }
+                val wideSearch = TvMode.isTv || LocalConfiguration.current.screenWidthDp >= 640
+                // Grid state is hoisted out of the width branch so hook
+                // order never changes when the width class flips (rotation).
+                val gridList = rememberLazyGridState()
+                LaunchedEffect(state.generation) { if (wideSearch) gridList.scrollToItem(0) }
+                if (wideSearch) {
+                    // Wide / TV: results as a card grid instead of one
+                    // stretched column. Phone keeps the list below.
+                    val columns = if (LocalConfiguration.current.screenWidthDp >= 1100) 3 else 2
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(columns),
+                        state = gridList,
+                        contentPadding = contentPadding.withTop(top),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    ) {
+                        gridItems(state.results, key = { it.id }) { video ->
+                            VideoCard(video, onClick = {
+                                val currentQuery = state.submitted.trim().ifEmpty { state.query.trim() }
+                                if (currentQuery.isNotEmpty()) {
+                                    SearchHistory.add(currentQuery)
+                                }
+                                onOpen(video)
+                            })
+                        }
+                    }
+                } else {
                 LazyColumn(state = list, contentPadding = contentPadding.withTop(top)) {
                 items(state.results, key = { it.id }) { video ->
                     VideoCard(video, onClick = {
@@ -1194,6 +1241,7 @@ fun SearchScreen(
                     }, modifier = if (GlassSettings.liteMode) Modifier else Modifier.animateItem())
                 }
             }
+                }
             }
         }
         }

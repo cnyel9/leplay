@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -54,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -91,33 +93,60 @@ data class ReleaseEntry(
     val prerelease: Boolean,
 )
 
+/** Failure of [fetchReleaseHistory] carrying a short, user-visible detail
+ *  (exception name + message) so the version-history screen can show WHY
+ *  it failed instead of a bare "could not load". */
+class ReleaseHistoryException(val detail: String, cause: Throwable? = null) :
+    Exception(detail, cause)
+
 /** Full release list for the About version-history screen, newest first. */
 suspend fun fetchReleaseHistory(): List<ReleaseEntry> = withContext(Dispatchers.IO) {
-    val request = Request.Builder()
-        .url("https://api.github.com/repos/cnyel9/leplay/releases?per_page=100")
-        .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "LePlay/${BuildConfig.VERSION_NAME}")
-        .build()
-    Net.client.newCall(request).execute().use { response ->
-        if (!response.isSuccessful) error("GitHub releases returned ${response.code}")
-        val array = org.json.JSONArray(response.body?.string().orEmpty())
-        val out = ArrayList<ReleaseEntry>()
-        for (i in 0 until array.length()) {
-            val json = array.optJSONObject(i) ?: continue
-            if (json.optBoolean("draft")) continue
-            val tag = json.optString("tag_name").ifBlank { continue }
-            out.add(
-                ReleaseEntry(
-                    version = tag.removePrefix("v").removePrefix("V").trim(),
-                    tag = tag,
-                    name = json.optString("name").ifBlank { tag },
-                    body = json.optString("body").orEmpty(),
-                    publishedAt = json.optString("published_at"),
-                    prerelease = json.optBoolean("prerelease"),
-                ),
-            )
+    try {
+        val request = Request.Builder()
+            .url("https://api.github.com/repos/cnyel9/leplay/releases?per_page=100")
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "LePlay/${BuildConfig.VERSION_NAME}")
+            .build()
+        Net.client.newCall(request).execute().use { response ->
+            val bodyText = response.body?.string().orEmpty()
+            if (!response.isSuccessful) error("GitHub releases returned ${response.code}")
+            // GitHub can answer 200 with a JSON OBJECT instead of the
+            // releases array (rate limit / abuse / error payloads): its
+            // "message" field is the useful detail, surface it.
+            if (bodyText.trimStart().startsWith("{")) {
+                val message = runCatching { JSONObject(bodyText).optString("message") }.getOrNull()
+                throw ReleaseHistoryException(
+                    "GitHub error object" + if (!message.isNullOrBlank()) ": $message" else "",
+                )
+            }
+            val array = org.json.JSONArray(bodyText)
+            val out = ArrayList<ReleaseEntry>()
+            for (i in 0 until array.length()) {
+                val json = array.optJSONObject(i) ?: continue
+                if (json.optBoolean("draft")) continue
+                val tag = json.optString("tag_name").ifBlank { continue }
+                out.add(
+                    ReleaseEntry(
+                        version = tag.removePrefix("v").removePrefix("V").trim(),
+                        tag = tag,
+                        name = json.optString("name").ifBlank { tag },
+                        body = json.optString("body").orEmpty(),
+                        publishedAt = json.optString("published_at"),
+                        prerelease = json.optBoolean("prerelease"),
+                    ),
+                )
+            }
+            out
         }
-        out
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: ReleaseHistoryException) {
+        Log.e("LePlayUpdates", "fetchReleaseHistory failed: ${e.detail}", e)
+        throw e
+    } catch (e: Exception) {
+        Log.e("LePlayUpdates", "fetchReleaseHistory failed", e)
+        val detail = "${e.javaClass.simpleName}: ${e.message ?: "no message"}".take(120)
+        throw ReleaseHistoryException(detail, e)
     }
 }
 
@@ -361,7 +390,9 @@ fun UpdateOverlay(state: UpdateState, backdrop: Backdrop) {
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                ) { state.dismiss() },
+                ) { state.dismiss() }
+                // On TV this scrim must not become a giant dead focus stop.
+                .then(if (TvMode.isTv) Modifier.focusProperties { canFocus = false } else Modifier),
             contentAlignment = Alignment.Center,
         ) {
             AnimatedVisibility(
@@ -391,6 +422,8 @@ fun UpdateOverlay(state: UpdateState, backdrop: Backdrop) {
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                         ) { }
+                        // Same dead-focus-stop guard for the card itself.
+                        .then(if (TvMode.isTv) Modifier.focusProperties { canFocus = false } else Modifier)
                         .padding(22.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

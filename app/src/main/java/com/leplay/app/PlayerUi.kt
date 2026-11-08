@@ -75,6 +75,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -929,7 +932,9 @@ fun MiniPlayer(
     fun touched() { touchedAt = System.currentTimeMillis() }
 
     LaunchedEffect(miniControlsVisible, state.isPlaying, touchedAt) {
-        if (miniControlsVisible && state.isPlaying) {
+        // On TV the controls stay: a remote cannot tap to bring them back
+        // the way a touch user can (same rule as VideoView's TV handling).
+        if (miniControlsVisible && state.isPlaying && !TvMode.isTv) {
             delay(3000)
             miniControlsVisible = false
         }
@@ -1226,6 +1231,16 @@ fun BitChordMusicPlayer(
         animationSpec = if (rememberReducedMotion() || GlassSettings.liteMode) snap() else spring(dampingRatio = 0.7f, stiffness = 400f),
         label = "album_scale",
     )
+    // TV: Material IconButtons have no visible focus by default, so they
+    // get the shared focus ring; the play button takes the initial focus
+    // so the remote lands somewhere predictable (ShortsScreen pattern).
+    val tvRing = if (TvMode.isTv) Modifier.tvFocusRing() else Modifier
+    val playFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        if (TvMode.isTv) runCatching { playFocusRequester.requestFocus() }
+    }
+    val wideMusic = TvMode.isTv ||
+        androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 640
 
     Box(
         Modifier
@@ -1264,7 +1279,9 @@ fun BitChordMusicPlayer(
         )
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxHeight()
+                .then(if (wideMusic) Modifier.widthIn(max = 560.dp) else Modifier.fillMaxWidth())
+                .align(Alignment.Center)
                 .padding(top = top, bottom = bottom + 16.dp)
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1276,7 +1293,7 @@ fun BitChordMusicPlayer(
                     .height(56.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onCollapse) {
+                IconButton(onClick = onCollapse, modifier = tvRing) {
                     Icon(
                         Icons.Rounded.KeyboardArrowDown,
                         contentDescription = I18n.t("collapse", "Collapse"),
@@ -1302,7 +1319,7 @@ fun BitChordMusicPlayer(
                         color = c.onSurface,
                     )
                 }
-                IconButton(onClick = { showTrackMenu = true }) {
+                IconButton(onClick = { showTrackMenu = true }, modifier = tvRing) {
                     Icon(
                         Icons.Rounded.MoreVert,
                         contentDescription = I18n.t("options", "Options"),
@@ -1412,7 +1429,7 @@ fun BitChordMusicPlayer(
                 }
                 Spacer(Modifier.width(12.dp))
                 val liked = state.accountState?.like == LikeStatus.Like
-                IconButton(onClick = state::toggleLike, modifier = Modifier.squishOn(liked)) {
+                IconButton(onClick = state::toggleLike, modifier = Modifier.squishOn(liked).then(tvRing)) {
                     FlourishIcon(
                         icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                         description = I18n.t("like", "Like"),
@@ -1481,7 +1498,7 @@ fun BitChordMusicPlayer(
 
                 IconButton(
                     onClick = state::toggleShuffle,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(48.dp).then(tvRing),
                 ) {
                     Icon(
                         Icons.Rounded.Shuffle,
@@ -1494,7 +1511,7 @@ fun BitChordMusicPlayer(
 
                 IconButton(
                     onClick = state::skipPrevious,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(48.dp).then(tvRing),
                 ) {
                     Icon(
                         Icons.Rounded.SkipPrevious,
@@ -1508,6 +1525,7 @@ fun BitChordMusicPlayer(
                 Box(
                     modifier = Modifier
                         .size(72.dp)
+                        .focusRequester(playFocusRequester)
                         .clip(CircleShape)
                         .background(c.onSurface)
                         .pressable(pressedScale = 0.92f, onClick = state::togglePlay),
@@ -1527,7 +1545,7 @@ fun BitChordMusicPlayer(
 
                 IconButton(
                     onClick = state::skipNext,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(48.dp).then(tvRing),
                 ) {
                     Icon(
                         Icons.Rounded.SkipNext,
@@ -1540,7 +1558,7 @@ fun BitChordMusicPlayer(
 
                 IconButton(
                     onClick = state::toggleLoop,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(48.dp).then(tvRing),
                 ) {
                     Icon(
                         if (state.loopEnabled) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
@@ -1582,7 +1600,7 @@ fun BitChordMusicPlayer(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
                             onClick = { showMusicQueue = true },
-                            modifier = Modifier.size(40.dp),
+                            modifier = Modifier.size(40.dp).then(tvRing),
                         ) {
                             Icon(
                                 Icons.Rounded.QueueMusic,
@@ -1593,7 +1611,7 @@ fun BitChordMusicPlayer(
                         }
                         IconButton(
                             onClick = { showLyrics = !showLyrics },
-                            modifier = Modifier.size(40.dp),
+                            modifier = Modifier.size(40.dp).then(tvRing),
                         ) {
                             Icon(
                                 Icons.Rounded.Lyrics,
@@ -2018,46 +2036,51 @@ private fun VideoDetailsBlock(
     onHeaderBottom: ((androidx.compose.ui.unit.Dp) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
+    val hasDescription = !details?.description.isNullOrBlank()
     Column(Modifier.padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(18.dp))
-        Text(
-            item.title,
-            fontFamily = RoundedHeavy,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 18.sp,
-            lineHeight = 22.sp,
-            letterSpacing = (-0.4).sp,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(6.dp))
-        val stats = listOfNotNull(
-            item.views.takeIf { it >= 0 }?.let { "${formatCount(it)} ${I18n.t("views", "views")}" },
-            item.uploaded?.ifBlank { null },
-            details?.likes?.takeIf { it > 0 }?.let { "${formatCount(it)} ${I18n.t("likes", "likes")}" },
-        ).joinToString(" · ")
-        val hasDescription = !details?.description.isNullOrBlank()
+        // The whole info block (title, stats, more/less) toggles the
+        // description, so the tap target is the full header, not just
+        // the stats line.
         Column(
             modifier = if (hasDescription) Modifier.pressable(pressedScale = 0.98f) { onToggleDescription() } else Modifier,
         ) {
             Text(
-                stats,
-                modifier = Modifier.fillMaxWidth(),
-                color = c.onSurfaceVariant,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
+                item.title,
+                fontFamily = RoundedHeavy,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 18.sp,
+                lineHeight = 22.sp,
+                letterSpacing = (-0.4).sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (hasDescription) {
+            Spacer(Modifier.height(6.dp))
+            val stats = listOfNotNull(
+                item.views.takeIf { it >= 0 }?.let { "${formatCount(it)} ${I18n.t("views", "views")}" },
+                item.uploaded?.ifBlank { null },
+                details?.likes?.takeIf { it > 0 }?.let { "${formatCount(it)} ${I18n.t("likes", "likes")}" },
+            ).joinToString(" · ")
+            Column {
                 Text(
-                    (if (descriptionOpen) I18n.t("show_less", "  less") else I18n.t("show_more", "  …more")).trim(),
-                    color = c.onSurface,
+                    stats,
+                    modifier = Modifier.fillMaxWidth(),
+                    color = c.onSurfaceVariant,
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 1,
-                    softWrap = false,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
+                if (hasDescription) {
+                    Text(
+                        (if (descriptionOpen) I18n.t("show_less", "  less") else I18n.t("show_more", "  …more")).trim(),
+                        color = c.onSurface,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
             }
         }
         AnimatedVisibility(
