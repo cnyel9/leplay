@@ -27,6 +27,7 @@ import androidx.media3.session.MediaController
 import kotlin.math.min
 import kotlin.math.roundToInt
 import androidx.media3.session.SessionToken
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -1334,7 +1335,7 @@ class PlayerState(private val scope: CoroutineScope) {
         fun tagMatches(tag: String): Boolean =
             tag.equals(code, ignoreCase = true) || tag.startsWith("$code-", ignoreCase = true)
         fun asVtt(raw: String): String = runCatching {
-            val u = okhttp3.HttpUrl.parse(raw) ?: return raw
+            val u = raw.toHttpUrlOrNull() ?: return raw
             u.newBuilder().setQueryParameter("fmt", "vtt").build().toString()
         }.getOrDefault(raw)
         val url = trackUrl?.let(::asVtt) ?: run {
