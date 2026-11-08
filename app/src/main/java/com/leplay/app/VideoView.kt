@@ -158,7 +158,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -322,9 +321,21 @@ fun VideoContent(
         val holdSpeedMs = Motion.HoldSpeedMs
         coroutineScope {
 
-            var seekWindow: Job? = null
-            var pendingSide = 0
-            var pendingAt = 0L
+            // Tap classification runs on time-boxed STATE, never on the
+            // liveness of a Job handle (rebuild 126). The pre-126 machine
+            // asked `seekWindow?.isActive` to decide whether the previous
+            // tap was still pending, but Job liveness seen from inside a
+            // running gesture is unreliable here: already-finished jobs
+            // read as active, so a lone side tap could be misread as the
+            // second half of a double tap (controls forced off, no toggle)
+            // and a real double tap could miss its window entirely. The
+            // state below lives in this same closure, is only ever touched
+            // from the gesture loop, and every branch that changes it is
+            // spelled out in the tap handling at the bottom of the gesture.
+            var lastTapAt = 0L
+            var lastTapSide = 0
+            var lastTapWasSeek = false
+            var preTapControlsVisible = false
             awaitEachGesture {
                 val down = awaitFirstDown()
                 if (portraitEdgeScrub && down.position.y >= size.height - EdgeScrubTouchPadAbove.roundToPx()) {
@@ -458,7 +469,7 @@ fun VideoContent(
                             System.currentTimeMillis() - startTime >= holdSpeedMs - 80L &&
                             kotlin.math.abs(totalDy) < 24f && kotlin.math.abs(totalDx) < 24f
                         ) {
-                            seekWindow?.cancel()
+                            lastTapWasSeek = false
                             if (!state.scrubDragging && state.beginHoldSpeed()) {
                                 if (HapticsSettings.enabled) currentView.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
                                 controlsVisible = false
@@ -478,7 +489,9 @@ fun VideoContent(
                 }
 
                 if (isDraggingGesture || exitHandled) {
-                    seekWindow?.cancel()
+                    // A drag is not a tap: it also breaks any pairing, so a
+                    // tap after a drag can never be read as a double tap.
+                    lastTapWasSeek = false
                     return@awaitEachGesture
                 }
 
@@ -486,60 +499,53 @@ fun VideoContent(
                 up.consume()
                 val x = up.position.x / size.width
                 val side = if (x < 0.4f) -1 else if (x > 0.6f) 1 else 0
-                // Burst CONTINUATION is time-boxed (rebuild 125). burstActive
-                // used to stay armed indefinitely (its reset effect watches
-                // burstTaps, which a continuing tap itself keeps bumping), so
-                // after any double-tap seek, every later single tap on that
-                // side was eaten as burst continuation: it seeked and the
-                // controls never appeared at all. A tap only continues a
-                // burst when it lands inside the burst window of the
-                // previous tap.
-                if (burstActive && side == burstSide &&
-                    up.uptimeMillis - pendingAt < SeekBurstWindowMs
+                // The whole tap machine (rebuild 126), classified purely
+                // from the time and side of the previous tap:
+                // - Burst continuation: the previous tap was itself part of
+                //   a seek burst on the same side and this tap lands within
+                //   SeekBurstWindowMs of it. The burst keeps going and the
+                //   controls stay exactly as they are.
+                // - Double tap: the previous tap was a lone side tap on the
+                //   same side within doubleTapMs. The seek fires; the
+                //   controls return to whatever they were BEFORE that first
+                //   tap, so the pair never leaves them toggled.
+                // - Lone tap: anything else. The controls toggle at once,
+                //   the tap is remembered, and for a side tap the pre-tap
+                //   visibility is remembered too so a following double tap
+                //   can restore it. A lone CENTER tap breaks pairing: a tap
+                //   after it is never a double tap.
+                val now = up.uptimeMillis
+                if (side != 0 && lastTapWasSeek && side == lastTapSide &&
+                    now - lastTapAt < SeekBurstWindowMs
                 ) {
-                    pendingAt = up.uptimeMillis
+                    lastTapAt = now
                     seekStep(side)
                     return@awaitEachGesture
                 }
-                burstActive = false
-                val inSeekWindow = seekWindow?.isActive == true
+                if (side != 0 && !lastTapWasSeek && side == lastTapSide &&
+                    now - lastTapAt < doubleTapMs
+                ) {
+                    lastTapAt = now
+                    lastTapWasSeek = true
+                    controlsVisible = preTapControlsVisible
+                    burstSide = side
+                    burstSeconds = 0
+                    burstActive = true
+                    seekStep(side)
+                    return@awaitEachGesture
+                }
+                preTapControlsVisible = controlsVisible
+                lastTapAt = now
+                lastTapSide = side
+                lastTapWasSeek = false
                 if (side == 0) {
-                    seekWindow?.cancel()
-                    pendingAt = up.uptimeMillis
                     if (state.videoZoom > 1.05f) {
                         state.resetZoom()
                     } else {
                         toggleControls()
                     }
-                } else if (inSeekWindow && side == pendingSide && up.uptimeMillis - pendingAt < doubleTapMs) {
-                    seekWindow?.cancel()
-                    // Hide again what the first tap just showed (rebuild 124):
-                    // the pair reads as one double tap, not tap-then-seek.
-                    controlsVisible = false
-                    burstSide = side
-                    burstSeconds = 0
-                    burstActive = true
-                    pendingAt = up.uptimeMillis
-                    seekStep(side)
                 } else {
-                    // A side tap may be the first half of a double tap. The
-                    // controls answer NOW (owner report, 0.0.8-test3 rebuild
-                    // 124: side taps used to be held until the double-tap
-                    // window expired, and the delayed job raced the 2 s
-                    // auto-hide timer and focus changes, so showing the
-                    // controls could take several taps). A following second
-                    // tap inside the window cancels the toggle back off as
-                    // the seek burst begins, so a double tap still never
-                    // leaves the controls up.
-                    val wasVisible = controlsVisible
-                    seekWindow?.cancel()
-                    pendingSide = side
-                    pendingAt = up.uptimeMillis
-                    if (!wasVisible) toggleControls()
-                    seekWindow = launch {
-                        delay(doubleTapMs)
-                        if (wasVisible) controlsVisible = false
-                    }
+                    toggleControls()
                 }
             }
         }
