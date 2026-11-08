@@ -302,8 +302,13 @@ fun FeedList(
                     VideoCard(video, onClick = { onOpen(video) })
                 }
                 when {
-                    initialLoading -> gridItems(3, key = { "skeleton-$it" }, span = { GridItemSpan(maxLineSpan) }) {
-                        SkeletonVideoCard(skeletonAlpha)
+                    initialLoading -> item(span = { GridItemSpan(maxLineSpan) }, key = "feed_grid_skeleton") {
+                        // The count-based grid items() overload does not
+                        // resolve in this Compose version; one full-span
+                        // item holding the skeleton stack instead.
+                        Column {
+                            repeat(3) { SkeletonVideoCard(skeletonAlpha) }
+                        }
                     }
                     feed.error != null && listVideos.isEmpty() -> item(span = { GridItemSpan(maxLineSpan) }) {
                         EmptyState(
