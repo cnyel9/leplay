@@ -458,13 +458,22 @@ fun SettingsScreen(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
+                // The sign-out dialog is glass over the Settings root page's
+                // own layer too (rebuild 124): composed outside that layer,
+                // so drawing it is the legal direction.
+                val signOutGlass = LocalSettingsBackdrop.current
                 Column(
                     modifier = Modifier
                         .padding(horizontal = 24.dp)
                         .widthIn(max = 350.dp)
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(c.surfaceContainerHighest)
+                        .then(
+                            if (signOutGlass != null) {
+                                Modifier.ownLayerGlass(signOutGlass, RoundedCornerShape(24.dp), c.surfaceContainerHighest)
+                            } else {
+                                Modifier.clip(RoundedCornerShape(24.dp)).background(c.surfaceContainerHighest)
+                            },
+                        )
                         .border(1.dp, c.onSurface.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -556,13 +565,23 @@ fun SettingsScreen(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
+                // The update dialog refracts the Settings root page's own
+                // layer (rebuild 124): composed outside that layer, so
+                // drawing it is the legal direction, and the blurred page
+                // behind gives the glass something real to bend.
+                val updateGlass = LocalSettingsBackdrop.current
                 Column(
                     modifier = Modifier
                         .padding(horizontal = 24.dp)
                         .widthIn(max = 350.dp)
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(c.surfaceContainerHighest)
+                        .then(
+                            if (updateGlass != null) {
+                                Modifier.ownLayerGlass(updateGlass, RoundedCornerShape(24.dp), c.surfaceContainerHighest)
+                            } else {
+                                Modifier.clip(RoundedCornerShape(24.dp)).background(c.surfaceContainerHighest)
+                            },
+                        )
                         .border(1.dp, c.onSurface.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -968,8 +987,10 @@ private fun AppearanceThemeContent(context: Context) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp)
+            .padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+      SettingsCard {
         SettingsSwitchRow(
             title = I18n.t("liquid_glass", "Liquid Glass"),
             subtitle = if (GlassSettings.enabled && !GlassSettings.liteMode) {
@@ -987,9 +1008,9 @@ private fun AppearanceThemeContent(context: Context) {
             checked = HapticsSettings.enabled,
             onCheckedChange = { HapticsSettings.setHaptics(it) },
         )
+      }
 
-        HorizontalDivider(color = c.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 4.dp))
-
+      SettingsCard {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1018,12 +1039,22 @@ private fun AppearanceThemeContent(context: Context) {
                     animationSpec = tween(260, easing = Motion.Emphasized),
                     label = "themeChipBg",
                 )
+                // Unselected theme chips are glass like every other chip in
+                // the app (0.0.8-test3 rebuild 124, owner: sub-screens must
+                // be Liquid Glass too); the selected one keeps its solid
+                // primary ink so the choice stays unmistakable.
+                val themeGlass = LocalSettingsBackdrop.current
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .pressable { ThemeSettings.chooseMode(mode) }
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(chipBg)
+                        .then(
+                            when {
+                                on -> Modifier.clip(RoundedCornerShape(14.dp)).background(chipBg)
+                                themeGlass != null -> Modifier.ownLayerGlass(themeGlass, RoundedCornerShape(14.dp), c.surfaceContainerHigh)
+                                else -> Modifier.pageGlass(RoundedCornerShape(14.dp), c.surfaceContainerHigh)
+                            },
+                        )
                         .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1037,6 +1068,7 @@ private fun AppearanceThemeContent(context: Context) {
             }
             }
         }
+      }
 
     }
 }
@@ -1426,7 +1458,11 @@ private fun GeneralModificationContent(context: Context) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      SettingsCard {
         SettingsSwitchRow(
             title = I18n.t("use_system_font", "Use System Font"),
             subtitle = I18n.t("use_system_font_sub", "Use device default font throughout the app"),
@@ -1470,9 +1506,9 @@ private fun GeneralModificationContent(context: Context) {
             onCheckedChange = { MiniPlayerSettings.set(it) },
         )
 
-        HorizontalDivider(color = c.onSurface.copy(alpha = 0.08f))
+      }
 
-        Spacer(Modifier.height(8.dp))
+      SettingsCard {
         Text(
             text = I18n.t("sponsorblock", "SponsorBlock"),
             fontWeight = FontWeight.SemiBold,
@@ -1548,8 +1584,9 @@ private fun GeneralModificationContent(context: Context) {
             }
         }
 
-        HorizontalDivider(color = c.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 8.dp))
+      }
 
+      SettingsCard {
         Text(
             text = I18n.t("quality", "Quality"),
             fontWeight = FontWeight.SemiBold,
@@ -1572,8 +1609,9 @@ private fun GeneralModificationContent(context: Context) {
             onClick = { showShortsQualityDialog = true },
         )
 
-        HorizontalDivider(color = c.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 8.dp))
+      }
 
+      SettingsCard {
         Text(
             text = I18n.t("downloads", "Downloads"),
             fontWeight = FontWeight.SemiBold,
@@ -1588,6 +1626,7 @@ private fun GeneralModificationContent(context: Context) {
             subtitle = currentPath,
             onClick = { showFolderDialog = true },
         )
+      }
     }
 
     if (showVideoQualityDialog) {
@@ -1942,11 +1981,17 @@ private fun LanguageContent(context: Context, onLanguageSelected: () -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
+        val langGlass = LocalSettingsBackdrop.current
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(c.surfaceContainerLow)
+                .then(
+                    if (langGlass != null) {
+                        Modifier.ownLayerGlass(langGlass, RoundedCornerShape(14.dp), c.surfaceContainerLow)
+                    } else {
+                        Modifier.clip(RoundedCornerShape(14.dp)).background(c.surfaceContainerLow)
+                    },
+                )
                 .border(1.dp, c.onSurface.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
                 .padding(horizontal = 12.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -2003,11 +2048,27 @@ private fun LanguageContent(context: Context, onLanguageSelected: () -> Unit) {
         ) {
             filteredLanguages.forEach { item ->
                 val isSelected = currentCode.equals(item.code, ignoreCase = true)
+                // Unselected language rows are glass over the page's own
+                // layer (rebuild 124); the selected row keeps its red tint,
+                // refracted through the same engine so it still reads as
+                // the current choice.
+                val rowGlass = LocalSettingsBackdrop.current
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(if (isSelected) c.primary.copy(alpha = 0.14f) else c.surfaceContainerLow.copy(alpha = 0.5f))
+                        .then(
+                            when {
+                                isSelected && rowGlass != null -> Modifier.ownLayerGlass(
+                                    rowGlass,
+                                    RoundedCornerShape(14.dp),
+                                    c.surfaceContainerLow,
+                                    tint = c.primary.copy(alpha = 0.30f),
+                                )
+                                isSelected -> Modifier.clip(RoundedCornerShape(14.dp)).background(c.primary.copy(alpha = 0.14f))
+                                rowGlass != null -> Modifier.ownLayerGlass(rowGlass, RoundedCornerShape(14.dp), c.surfaceContainerLow)
+                                else -> Modifier.clip(RoundedCornerShape(14.dp)).background(c.surfaceContainerLow.copy(alpha = 0.5f))
+                            },
+                        )
                         .border(
                             width = 1.dp,
                             color = if (isSelected) c.primary.copy(alpha = 0.5f) else Color.Transparent,

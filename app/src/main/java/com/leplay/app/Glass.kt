@@ -333,13 +333,13 @@ fun Modifier.pageGlass(shape: Shape, solid: Color, tintAlpha: Float = 0.45f): Mo
  * glass ON it degrades to the shared frosted approximation.
  */
 @Composable
-fun Modifier.ownLayerGlass(backdrop: Backdrop, shape: Shape, solid: Color): Modifier {
+fun Modifier.ownLayerGlass(backdrop: Backdrop, shape: Shape, solid: Color, tint: Color? = null): Modifier {
     return if (GlassQuality.effectsSupported) {
         this.liquidGlass(
             backdrop,
             glassSpec(
                 shape = shape,
-                tint = glassFill(),
+                tint = tint ?: glassFill(),
                 blur = 18.dp,
                 refractionHeight = 14.dp,
                 refractionAmount = 22.dp,

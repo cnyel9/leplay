@@ -498,27 +498,31 @@ fun VideoContent(
                     }
                 } else if (inSeekWindow && side == pendingSide && up.uptimeMillis - pendingAt < doubleTapMs) {
                     seekWindow?.cancel()
+                    // Hide again what the first tap just showed (rebuild 124):
+                    // the pair reads as one double tap, not tap-then-seek.
                     controlsVisible = false
                     burstSide = side
                     burstSeconds = 0
                     burstActive = true
                     seekStep(side)
                 } else {
-                    // A side tap may be the first half of a double tap: hold the
-                    // controls decision until the double-tap window closes, so
-                    // a double tap seeks without the controls ever flashing.
-                    // A lone tap toggles the controls when the window expires.
+                    // A side tap may be the first half of a double tap. The
+                    // controls answer NOW (owner report, 0.0.8-test3 rebuild
+                    // 124: side taps used to be held until the double-tap
+                    // window expired, and the delayed job raced the 2 s
+                    // auto-hide timer and focus changes, so showing the
+                    // controls could take several taps). A following second
+                    // tap inside the window cancels the toggle back off as
+                    // the seek burst begins, so a double tap still never
+                    // leaves the controls up.
                     val wasVisible = controlsVisible
                     seekWindow?.cancel()
                     pendingSide = side
                     pendingAt = up.uptimeMillis
+                    if (!wasVisible) toggleControls()
                     seekWindow = launch {
                         delay(doubleTapMs)
-                        if (wasVisible) {
-                            controlsVisible = false
-                        } else {
-                            toggleControls()
-                        }
+                        if (wasVisible) controlsVisible = false
                     }
                 }
             }
