@@ -871,6 +871,15 @@ private fun AppearanceThemeContent(context: Context) {
             enabled = !GlassSettings.liteMode,
         )
 
+        if (GlassSettings.liteMode) {
+            Text(
+                text = I18n.t("liquid_glass_blocked_by_lite", "Liquid Glass is off while Lite Mode is on. Turn off Lite Mode to use it."),
+                style = MaterialTheme.typography.bodySmall,
+                color = c.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 6.dp),
+            )
+        }
+
         SettingsSwitchRow(
             title = I18n.t("lite_mode", "Lite Mode"),
             subtitle = I18n.t("lite_mode_sub", "Solid surfaces, animations off, no Shorts preloading"),
