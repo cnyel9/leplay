@@ -24,6 +24,7 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import coil.compose.AsyncImage
 import androidx.compose.ui.platform.LocalContext
@@ -563,7 +564,7 @@ private fun VideoStage(state: PlayerState, morph: PlayerMorph, onCollapse: () ->
     val baseStage = Modifier
         .padding(horizontal = StageSideGap)
         .fillMaxWidth()
-    val stage = if (state.portraitTall && !AudioOnly.enabled) {
+    val stageSized: Modifier = if (state.portraitTall && !AudioOnly.enabled) {
         baseStage
             .fillMaxSize()
             .aspectRatio(tallAspect)
@@ -571,7 +572,7 @@ private fun VideoStage(state: PlayerState, morph: PlayerMorph, onCollapse: () ->
     } else {
         baseStage.aspectRatio(aspect)
     }
-        .then(Modifier)
+    val stage = stageSized
         .graphicsLayer {
 
             val k = 1f + 0.06f * (1f - exp(-pullUp.value / (pullDistance * 1.5f)))
