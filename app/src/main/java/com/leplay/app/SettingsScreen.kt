@@ -232,7 +232,7 @@ fun SettingsScreen(
                         title = I18n.t("appearance_theme", "Appearance & Theme"),
                         subtitle = I18n.t("appearance_sub", "Theme mode, color palette and UI style"),
                         onClick = { activeFloatingSection = SettingsFloatingSection.APPEARANCE },
-                            padded = false,
+                        padded = false,
                         )
                 }
 
@@ -243,7 +243,7 @@ fun SettingsScreen(
                         title = I18n.t("general_modification", "General Modification"),
                         subtitle = I18n.t("general_modification_sub", "Font, gestures, quality & downloads"),
                         onClick = { activeFloatingSection = SettingsFloatingSection.GENERAL_MODS },
-                            padded = false,
+                        padded = false,
                         )
                 }
 
@@ -254,7 +254,7 @@ fun SettingsScreen(
                         title = I18n.t("language", "Language"),
                         subtitle = LanguageSettings.currentDisplay(),
                         onClick = { activeFloatingSection = SettingsFloatingSection.LANGUAGE },
-                            padded = false,
+                        padded = false,
                         )
                 }
 
@@ -265,7 +265,7 @@ fun SettingsScreen(
                         title = I18n.t("storage_usage", "Storage Usage"),
                         subtitle = I18n.t("storage_sub", "See phone storage & clear LePlay cache"),
                         onClick = { activeFloatingSection = SettingsFloatingSection.STORAGE_USAGE },
-                            padded = false,
+                        padded = false,
                         )
                 }
 
@@ -300,14 +300,14 @@ fun SettingsScreen(
                                 }
                             }
                         }
-                            padded = false,
+                        padded = false,
                         )
                     SettingsRow(
                         icon = Icons.Rounded.History,
                         title = I18n.t("version_history", "Version history"),
                         subtitle = I18n.t("version_history_sub", "Changelogs from 0.0.1 to the latest"),
                         onClick = { activeFloatingSection = SettingsFloatingSection.VERSION_HISTORY },
-                            padded = false,
+                        padded = false,
                         )
                     SettingsRow(
                         icon = Icons.Rounded.FileDownload,
@@ -326,7 +326,7 @@ fun SettingsScreen(
                                 updateFeedback = I18n.t("latest_version_notice", "You're on the latest version ({version}).").replace("{version}", BuildConfig.VERSION_NAME)
                             }
                         },
-                            padded = false,
+                        padded = false,
                         )
                     val openRepo: (String) -> Unit = { url ->
                         runCatching {
@@ -339,7 +339,7 @@ fun SettingsScreen(
                         title = I18n.t("open_source", "Open Source"),
                         subtitle = I18n.t("open_source_sub", "View source code on GitHub"),
                         onClick = { openRepo(leplayRepo) },
-                            padded = false,
+                        padded = false,
                         )
                     val telegram = "https://github.com/cnyel9"
                     val openTelegram: () -> Unit = {
@@ -353,7 +353,7 @@ fun SettingsScreen(
                         title = I18n.t("developer", "Developer"),
                         subtitle = "Levi Setiadi (@cnyel9)",
                         onClick = openTelegram,
-                            padded = false,
+                        padded = false,
                         )
                     SettingsRow(
                         icon = Icons.Rounded.Favorite,
