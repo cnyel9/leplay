@@ -100,7 +100,8 @@ data class DownloadOption(
     val hdr: Boolean = false,
 ) {
     val needsMux: Boolean get() = muxed == null
-    val label: String get() = "${height}p${if (hdr) " HDR" else ""}"
+    val isAudioOnly: Boolean get() = height == Downloads.AUDIO_HEIGHT
+    val label: String get() = if (isAudioOnly) "MP3" else "${height}p${if (hdr) " HDR" else ""}"
     val containerLabel: String get() = if (container == "webm") "WebM" else "MP4"
 }
 
@@ -113,6 +114,9 @@ data class DownloadOption(
 
 
 object Downloads {
+    /** Sentinel height for the audio-only "MP3" option in the video download sheet. Kept apart from 0 (music downloads) so the two never collide or share a silo. */
+    const val AUDIO_HEIGHT = -2
+
     private const val MAX_ACTIVE = 2
     private const val PERSIST_KEY = "tasks"
     private const val PREFS = "downloads"
@@ -189,7 +193,15 @@ object Downloads {
     suspend fun options(id: String): List<DownloadOption> = withContext(Dispatchers.IO) {
         val info = StreamCache.getOrLoad(id)
         HdrFormats.install(id, info)
-        optionsFor(info)
+        optionsFor(info) + listOfNotNull(audioOption(info))
+    }
+
+    /** The trailing audio-only option for the video download sheet: the best M4A audio stream, repackaged as .mp3 on download. */
+    private fun audioOption(info: StreamInfo): DownloadOption? {
+        val audio = bestAudio(info, webm = false) ?: return null
+        val bits = max(audio.averageBitrate, audio.bitrate).toLong()
+        val estimate = if (bits > 0 && info.duration > 0) bits * info.duration / 8 else -1L
+        return DownloadOption(AUDIO_HEIGHT, null, null, audio, estimate, "m4a")
     }
 
     private fun optionsFor(info: StreamInfo): List<DownloadOption> {
@@ -314,7 +326,11 @@ object Downloads {
         if (!initialized) return false
         val key = "${video.id}@${option.height}"
         if (tasks.any { it.key == key }) return false
-        val name = fileNameFor(video, option.height, option.container, option.hdr)
+        val name = if (option.isAudioOnly) {
+            fileNameFor(video, AUDIO_HEIGHT)
+        } else {
+            fileNameFor(video, option.height, option.container, option.hdr)
+        }
         val task = DownloadTask(
             videoId = video.id,
             title = video.title,
@@ -471,6 +487,42 @@ object Downloads {
             task.downloaded = task.total
             task.status = DownloadStatus.Complete
             notifyFinished(task, failed = false)
+            return
+        }
+
+        if (task.height == AUDIO_HEIGHT) {
+            val audio = bestAudio(info, webm = false) ?: throw IOException("Audio stream not available")
+            val work = workFile(task, "audio")
+            val remote = probe(audio.content)
+            task.total = remote.total
+            val aDone = AtomicLong(if (work.exists()) work.length() else 0L)
+            val received = transfer(audio.content, work, remote) { n -> report(task, aDone.addAndGet(n)) }
+            if (received != remote.total || work.length() != remote.total) {
+                throw IOException("Audio download incomplete (${work.length()} of ${remote.total} bytes)")
+            }
+            // Same AAC audio, repackaged from the raw M4A stream into a plain
+            // MPEG-4 container so the file can carry the .mp3 name users asked
+            // for. No re-encode: Android has no MP3 encoder, and players read
+            // AAC-in-MP4 regardless of the extension.
+            task.status = DownloadStatus.Processing
+            persist()
+            val target = task.file
+            target.delete()
+            val converted = File(dir, "${task.videoId}_${task.height}_mp3.part")
+            converted.delete()
+            remuxToMp3(work, converted)
+            work.delete()
+            if (!converted.renameTo(target)) {
+                converted.copyTo(target, overwrite = true)
+                converted.delete()
+            }
+            if (!target.exists() || target.length() <= 0L) throw IOException("Could not finish the download")
+            task.total = target.length()
+            task.downloaded = task.total
+            task.error = null
+            task.status = DownloadStatus.Complete
+            notifyFinished(task, failed = false)
+            persist()
             return
         }
 
@@ -846,6 +898,42 @@ object Downloads {
         }
     }
 
+    /** Copies the single audio track from [src] into a fresh MPEG-4 container at [dst], samples untouched. */
+    private fun remuxToMp3(src: File, dst: File) {
+        val extractor = MediaExtractor()
+        var muxer: MediaMuxer? = null
+        try {
+            extractor.setDataSource(src.absolutePath)
+            val track = findTrack(extractor, "audio/") ?: throw IOException("No audio track to convert")
+            extractor.selectTrack(track)
+            muxer = MediaMuxer(dst.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val m = muxer
+            val out = m.addTrack(extractor.getTrackFormat(track))
+            m.start()
+            val buffer = ByteBuffer.allocateDirect(1024 * 1024)
+            val info = MediaCodec.BufferInfo()
+            var lastTime = -1L
+            var size = extractor.readSampleData(buffer, 0)
+            while (size >= 0) {
+                if (Thread.interrupted()) throw CancellationException("Conversion cancelled")
+                val pts = extractor.sampleTime.coerceAtLeast(lastTime + 1)
+                lastTime = pts
+                info.set(0, size, pts, extractor.sampleFlags)
+                m.writeSampleData(out, buffer, info)
+                extractor.advance()
+                size = extractor.readSampleData(buffer, 0)
+            }
+            m.stop()
+        } catch (t: Throwable) {
+            dst.delete()
+            if (t is IOException) throw t
+            throw IOException("Could not convert the audio", t)
+        } finally {
+            runCatching { muxer?.release() }
+            runCatching { extractor.release() }
+        }
+    }
+
     private fun findTrack(extractor: MediaExtractor, prefix: String): Int? {
         for (i in 0 until extractor.trackCount) {
             val mime = extractor.getTrackFormat(i).getString(AndroidMediaFormat.KEY_MIME).orEmpty()
@@ -864,6 +952,7 @@ object Downloads {
             .take(64)
             .ifBlank { video.id }
         if (height == 0) return "$safe [Audio] ${video.id}.m4a"
+        if (height == AUDIO_HEIGHT) return "$safe [MP3] ${video.id}.mp3"
         val hdrTag = if (hdr) " HDR" else ""
         val extension = if (container == "webm") "webm" else "mp4"
         return "$safe [${height}p$hdrTag] ${video.id}.$extension"
@@ -911,7 +1000,7 @@ object Downloads {
                 val height = json.optInt("height")
                 val name = json.optString("file")
 
-                if (height < 0 || name.isBlank()) continue
+                if ((height < 0 && height != AUDIO_HEIGHT) || name.isBlank()) continue
                 val status = runCatching {
                     DownloadStatus.valueOf(json.optString("status"))
                 }.getOrDefault(DownloadStatus.Paused)
@@ -947,8 +1036,10 @@ object Downloads {
                 if (name.endsWith(".part") || name.startsWith(".")) return@forEach
                 if (!existing.add(name)) return@forEach
                 val audio = name.endsWith(".m4a")
+                val mp3 = name.endsWith(".mp3")
                 val ext = when {
                     audio -> ".m4a"
+                    mp3 -> ".mp3"
                     name.endsWith(".webm") -> ".webm"
                     else -> ".mp4"
                 }
@@ -960,7 +1051,7 @@ object Downloads {
                 val cut = label.lastIndexOf(" [")
                 val title = (if (cut > 0) label.substring(0, cut) else label).trim()
                 val height = Regex("\\[(\\d+)p]").find(label)?.groupValues?.get(1)?.toIntOrNull()
-                    ?: if (audio) 0 else -1
+                    ?: if (audio) 0 else if (mp3) AUDIO_HEIGHT else -1
                 if (height < 0) return@forEach
                 tasks.add(
                     DownloadTask(
@@ -971,7 +1062,7 @@ object Downloads {
                         durationSec = 0L,
                         height = height,
                         fileName = name,
-                        container = if (ext == ".webm") "webm" else "mp4",
+                        container = if (ext == ".webm") "webm" else if (ext == ".mp3") "m4a" else "mp4",
                         hdr = label.contains(" HDR]"),
                         downloaded = f.length(),
                         total = f.length(),

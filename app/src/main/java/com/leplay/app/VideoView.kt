@@ -417,10 +417,12 @@ fun VideoContent(
                 }
 
                 if (isDraggingGesture || verticalSwipeHandled) {
+                    seekWindow?.cancel()
                     return@awaitEachGesture
                 }
 
                 if (upEarly == null) {
+                    seekWindow?.cancel()
                     val elapsed = System.currentTimeMillis() - startTime
 
                     if (elapsed >= holdSpeedMs - 80L) {
@@ -444,24 +446,37 @@ fun VideoContent(
                 if (burstActive && side == burstSide) { seekStep(side); return@awaitEachGesture }
                 burstActive = false
                 val inSeekWindow = seekWindow?.isActive == true
-                seekWindow?.cancel()
                 if (side == 0) {
+                    seekWindow?.cancel()
                     if (state.videoZoom > 1.05f) {
                         state.resetZoom()
                     } else {
                         toggleControls()
                     }
                 } else if (inSeekWindow && side == pendingSide && up.uptimeMillis - pendingAt < doubleTapMs) {
+                    seekWindow?.cancel()
                     controlsVisible = false
                     burstSide = side
                     burstSeconds = 0
                     burstActive = true
                     seekStep(side)
                 } else {
-                    toggleControls()
+                    // A side tap may be the first half of a double tap: hold the
+                    // controls decision until the double-tap window closes, so
+                    // a double tap seeks without the controls ever flashing.
+                    // A lone tap toggles the controls when the window expires.
+                    val wasVisible = controlsVisible
+                    seekWindow?.cancel()
                     pendingSide = side
                     pendingAt = up.uptimeMillis
-                    seekWindow = launch { delay(doubleTapMs) }
+                    seekWindow = launch {
+                        delay(doubleTapMs)
+                        if (wasVisible) {
+                            controlsVisible = false
+                        } else {
+                            toggleControls()
+                        }
+                    }
                 }
             }
         }

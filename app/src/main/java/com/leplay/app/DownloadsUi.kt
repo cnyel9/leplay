@@ -199,15 +199,26 @@ private fun QualityChoiceRow(option: DownloadOption, selected: Boolean, onClick:
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(option.label, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
-            val subtitle = buildString {
-                qualityTag(option.height)?.let { append(it) }
-                if (option.estimatedBytes > 0) {
-                    if (isNotEmpty()) append(" · ")
-                    append(formatBytes(option.estimatedBytes))
+            val subtitle = if (option.isAudioOnly) {
+                buildString {
+                    append(I18n.t("dl_audio_only", "Audio only"))
+                    if (option.estimatedBytes > 0) {
+                        append(" · ")
+                        append(formatBytes(option.estimatedBytes))
+                    }
+                    append(" · MP3")
                 }
-                if (isNotEmpty()) append(" · ")
-                append(option.containerLabel)
-                append(if (option.needsMux) I18n.t("dl_mux_suffix", " · video + audio") else I18n.t("dl_with_audio_suffix", " · with audio"))
+            } else {
+                buildString {
+                    qualityTag(option.height)?.let { append(it) }
+                    if (option.estimatedBytes > 0) {
+                        if (isNotEmpty()) append(" · ")
+                        append(formatBytes(option.estimatedBytes))
+                    }
+                    if (isNotEmpty()) append(" · ")
+                    append(option.containerLabel)
+                    append(if (option.needsMux) I18n.t("dl_mux_suffix", " · video + audio") else I18n.t("dl_with_audio_suffix", " · with audio"))
+                }
             }
             Text(subtitle, color = c.onSurfaceVariant, fontSize = 11.5.sp)
         }
@@ -231,7 +242,7 @@ fun DownloadsScreen(
 
 
     var section by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(0) }
-    val videos = tasks.filter { it.height > 0 }
+    val videos = tasks.filter { it.height > 0 || it.height == Downloads.AUDIO_HEIGHT }
     val music = tasks.filter { it.height == 0 }
     val shown = if (section == 0) videos else music
     CollapsingHeaderLayout(
