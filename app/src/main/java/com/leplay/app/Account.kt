@@ -162,6 +162,8 @@ object Account {
 
     private var store: SecureStore? = null
     private val entries = mutableListOf<StoredAccount>()
+    /** Guards entries mutations that happen off the main thread (cookie rotation saves). */
+    private val entriesLock = Any()
     private val cookies = linkedMapOf<String, String>()
     private var clientVersion = FALLBACK_CLIENT_VERSION
     private var visitorData: String? = null
@@ -274,41 +276,73 @@ object Account {
             parseCookieHeader(cookieHeader, cookies)
         }
         persistCookies()
-        refreshClientConfig()
-        val rawP = fetchProfileFromNetwork()
-        val emailRegex = Regex("""[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}""")
-        val detectedEmail = explicitEmail
-            ?: emailRegex.find(rawP?.handle.orEmpty())?.value
-            ?: emailRegex.find(rawP?.name.orEmpty())?.value
-            ?: emailRegex.find(cookieHeader)?.value
-        val displayName = when {
-            rawP != null && isCleanAccountName(rawP.name) -> rawP.name
-            !detectedEmail.isNullOrBlank() -> detectedEmail
-            !rawP?.handle.isNullOrBlank() && isCleanAccountName(rawP.handle) -> rawP.handle
-            else -> "Google Account"
-        }
-        val p = Profile(displayName, rawP?.handle ?: detectedEmail, rawP?.avatar)
+        // Save the account record FIRST and return (0.0.8): the session is
+        // valid the moment its cookies check out, so the sign-in screen
+        // closes immediately. The config refresh and the profile fetch,
+        // which only produce the display name and avatar, finish in the
+        // background below. This also means closing the app mid-finish can
+        // no longer leave a half-saved login behind.
         val id = accountId(cookieHeader)
+        val provisionalName = explicitEmail ?: "Google Account"
         withContext(Dispatchers.Main) {
             val entry = StoredAccount(
                 id = id,
-                name = p.name,
-                handle = p.handle,
-                avatar = p.avatar,
+                name = provisionalName,
+                handle = explicitEmail,
+                avatar = null,
                 cookies = cookieHeader(),
                 clientVersion = clientVersion,
                 visitor = visitorData,
-                email = detectedEmail,
+                email = explicitEmail,
             )
             val index = entries.indexOfFirst { it.id == id || sameSession(it.cookies, cookieHeader) }
             if (index >= 0) entries[index] = entry else entries += entry
             activeAccountId = id
-            profile = p
+            profile = Profile(provisionalName, explicitEmail, null)
             store?.apply {
-                put(KEY_NAME, p.name); put(KEY_HANDLE, p.handle); put(KEY_AVATAR, p.avatar)
+                put(KEY_NAME, provisionalName); put(KEY_HANDLE, explicitEmail); put(KEY_AVATAR, null)
             }
             persistAccounts()
             publish()
+        }
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            runCatching {
+                refreshClientConfig()
+                val rawP = fetchProfileFromNetwork()
+                val emailRegex = Regex("""[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}""")
+                val detectedEmail = explicitEmail
+                    ?: emailRegex.find(rawP?.handle.orEmpty())?.value
+                    ?: emailRegex.find(rawP?.name.orEmpty())?.value
+                    ?: emailRegex.find(cookieHeader)?.value
+                val displayName = when {
+                    rawP != null && isCleanAccountName(rawP.name) -> rawP.name
+                    !detectedEmail.isNullOrBlank() -> detectedEmail
+                    !rawP?.handle.isNullOrBlank() && isCleanAccountName(rawP.handle) -> rawP.handle
+                    else -> "Google Account"
+                }
+                val p = Profile(displayName, rawP?.handle ?: detectedEmail, rawP?.avatar)
+                withContext(Dispatchers.Main) {
+                    val index = entries.indexOfFirst { it.id == id }
+                    if (index >= 0) {
+                        entries[index] = entries[index].copy(
+                            name = p.name,
+                            handle = p.handle,
+                            avatar = p.avatar,
+                            clientVersion = clientVersion,
+                            visitor = visitorData,
+                            email = detectedEmail ?: entries[index].email,
+                        )
+                        if (activeAccountId == id) {
+                            profile = p
+                            store?.apply {
+                                put(KEY_NAME, p.name); put(KEY_HANDLE, p.handle); put(KEY_AVATAR, p.avatar)
+                            }
+                        }
+                        persistAccounts()
+                        publish()
+                    }
+                }
+            }
         }
     }
 
@@ -658,7 +692,19 @@ object Account {
                 if (cookies[name] != value) { cookies[name] = value; changed = true }
             }
         }
-        if (changed) persistCookies()
+        if (changed) {
+            persistCookies()
+            // Rotated cookies must also land in the accounts JSON (0.0.8):
+            // init() reads that JSON first, so rotations saved only to the
+            // legacy key were lost on restart and the restored session
+            // could already be dead server-side, which looked exactly like
+            // being signed out every few hours. saveActive touches the
+            // shared entries list, so it is kept inside its lock.
+            synchronized(entriesLock) {
+                saveActive()
+                persistAccounts()
+            }
+        }
     }
 
     private fun persistCookies() = store?.put(KEY_COOKIES, cookieHeader())

@@ -176,6 +176,7 @@ private fun SpeedPanelContent(state: PlayerState) {
             if (step == last) return@collect
             last = step
             if (!driving) return@collect
+            if (HapticsSettings.enabled) haptics.step(step)
             state.previewSpeed(PlaybackSpeed.atStep(step))
         }
     }
@@ -284,6 +285,7 @@ private fun SpeedPanelContent(state: PlayerState) {
 
         Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             RememberCheck(PlaybackSpeed.remember, Modifier.weight(1f)) {
+                if (HapticsSettings.enabled) view.performHapticFeedback(if (PlaybackSpeed.remember) HapticFeedbackConstants.CLOCK_TICK else HapticFeedbackConstants.CONFIRM)
                 state.toggleRememberSpeed()
             }
             Spacer(Modifier.width(10.dp))

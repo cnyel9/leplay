@@ -180,7 +180,9 @@ internal const val StageMaxAspect = 2.4f
 
 internal const val StageFrameAspect = 16f / 9f
 
-/** Aspect (w/h) of the tall vertical viewing mode (0.0.8 portrait drag-down). */
+/** Fallback aspect (w/h) of the vertical viewing mode (0.0.8 portrait
+ *  drag-down). Since 0.0.8-test2 the stage fills the screen and its real
+ *  aspect is measured; this constant only seeds the first frame. */
 internal const val TallStageAspect = 0.75f
 
 internal const val AudioStageAspect = 2.5f
@@ -430,7 +432,11 @@ fun PlayerScreen(
             }
 
 
-            if (!showDetails) Spacer(Modifier.weight(1f)) else
+            if (state.portraitTall) {
+                // Fullscreen vertical mode (0.0.8-test2): the stage fills
+                // the whole screen, so the details column is not composed
+                // at all underneath it.
+            } else if (!showDetails) Spacer(Modifier.weight(1f)) else
             LazyColumn(
                 state = portraitRelatedList,
                 modifier = Modifier
@@ -534,10 +540,19 @@ private fun VideoStage(state: PlayerState, morph: PlayerMorph, onCollapse: () ->
     val reduced = rememberReducedMotion()
     val scope = rememberCoroutineScope()
 
+    // Fullscreen vertical mode (0.0.8-test2): the stage fills the whole
+    // screen, so its aspect is the measured screen aspect, not the fixed
+    // frame ratio from the first tall-mode iteration.
+    var screenAspect by remember { mutableFloatStateOf(TallStageAspect) }
     val aspect by animateFloatAsState(
         state.stageAspect,
         if (reduced) snap() else spring(dampingRatio = 1f, stiffness = 380f),
         label = "stageAspect",
+    )
+    val tallAspect by animateFloatAsState(
+        screenAspect,
+        if (reduced) snap() else spring(dampingRatio = 1f, stiffness = 380f),
+        label = "tallStageAspect",
     )
     val pullUp = remember { Animatable(0f) }
     val pullDistance = with(LocalDensity.current) { FullscreenPull.toPx() }
@@ -545,10 +560,18 @@ private fun VideoStage(state: PlayerState, morph: PlayerMorph, onCollapse: () ->
 
     var decided by remember { mutableStateOf(false) }
     var pulling by remember { mutableStateOf(false) }
-    val stage = Modifier
+    val baseStage = Modifier
         .padding(horizontal = StageSideGap)
         .fillMaxWidth()
-        .aspectRatio(aspect)
+    val stage = if (state.portraitTall && !AudioOnly.enabled) {
+        baseStage
+            .fillMaxSize()
+            .aspectRatio(tallAspect)
+            .onSizeChanged { sz -> if (sz.width > 0 && sz.height > 0) screenAspect = sz.width.toFloat() / sz.height.toFloat() }
+    } else {
+        baseStage.aspectRatio(aspect)
+    }
+        .then(Modifier)
         .graphicsLayer {
 
             val k = 1f + 0.06f * (1f - exp(-pullUp.value / (pullDistance * 1.5f)))
@@ -586,7 +609,9 @@ private fun VideoStage(state: PlayerState, morph: PlayerMorph, onCollapse: () ->
             state = rememberDraggableState { delta ->
                 if (!decided) {
                     decided = true
-                    pulling = delta < 0f && state.expanded && !state.fullscreen && !AudioOnly.enabled && morph.progress.value >= 0.999f
+                    // In fullscreen vertical mode the stage already fills
+                    // the screen: no pull-up and no morph drag (0.0.8-test2).
+                    pulling = delta < 0f && state.expanded && !state.fullscreen && !state.portraitTall && !AudioOnly.enabled && morph.progress.value >= 0.999f
                 }
                 if (pulling) scope.launch(start = CoroutineStart.UNDISPATCHED) { pullUp.snapTo((pullUp.value - delta).coerceAtLeast(0f)) }
                 else morph.dragBy(delta)

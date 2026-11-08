@@ -119,12 +119,28 @@ fun SignInScreen(onDone: () -> Unit, onCancel: () -> Unit) {
                 modifier = Modifier.fillMaxSize(),
                 factory = { context ->
                     val cookies = CookieManager.getInstance()
-                    cookies.removeAllCookies(null)
-                    cookies.removeSessionCookies(null)
-                    cookies.flush()
-                    runCatching { android.webkit.WebStorage.getInstance().deleteAllData() }
+                    // Wait for the cookie wipe to actually finish before the
+                    // sign-in page loads (0.0.8): the previous fire-and-forget
+                    // wipe raced the page load, and a half-cleared jar could
+                    // mix the old session into the fresh capture.
+                    var webViewRef: WebView? = null
+                    var wipeDone = false
+                    fun loadSignInPage() {
+                        if (wipeDone) return
+                        wipeDone = true
+                        runCatching { android.webkit.WebStorage.getInstance().deleteAllData() }
+                        cookies.flush()
+                        webViewRef?.loadUrl(SIGN_IN_URL)
+                    }
+                    cookies.removeAllCookies {
+                        cookies.removeSessionCookies { loadSignInPage() }
+                    }
+                    // Safety net in case a WebView build never delivers the
+                    // wipe callbacks; the guard above prevents a double load.
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ loadSignInPage() }, 1500)
 
                     WebView(context).apply {
+                        webViewRef = this
                         clearCache(true)
                         clearFormData()
                         clearHistory()
@@ -172,7 +188,8 @@ fun SignInScreen(onDone: () -> Unit, onCancel: () -> Unit) {
                                 checkSignIn(view, url)
                             }
                         }
-                        loadUrl(SIGN_IN_URL)
+                        // The page load happens in loadSignInPage() above,
+                        // once the cookie wipe callbacks have landed.
                     }
                 },
             )

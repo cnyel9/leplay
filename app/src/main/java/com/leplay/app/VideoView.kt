@@ -69,6 +69,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.VolumeMute
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.AspectRatio
+import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.BrightnessMedium
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
@@ -345,117 +346,143 @@ fun VideoContent(
 
                 val startTime = System.currentTimeMillis()
                 val downX = down.position.x / size.width
-                val downY = down.position.y
+                var anchorY = down.position.y
                 var isDraggingGesture = false
-                var lastY = downY
+                var lastY = down.position.y
+                // Fractional volume accumulator (0.0.8-test2): per-event
+                // deltas used to be truncated to whole steps and the
+                // remainder thrown away, so slow drags lost most of their
+                // travel. The accumulator carries the fraction across
+                // events and across direction reversals.
+                var volumeAcc = -1f
+                var exitHandled = false
+                var upChange: androidx.compose.ui.input.pointer.PointerInputChange? = null
 
-                var verticalSwipeHandled = false
-                val upEarly = withTimeoutOrNull(holdSpeedMs) {
-                    var event = awaitPointerEvent()
-                    while (event.changes.any { it.pressed }) {
-                        val change = event.changes.firstOrNull { it.pressed }
-                        if (change != null) {
-                            val dy = lastY - change.position.y
-                            val totalDy = downY - change.position.y
-                            val totalDx = down.position.x - change.position.x
+                // The movement loop is no longer capped by the hold-speed
+                // timeout (0.0.8-test2): drags used to stop being tracked
+                // after ~580 ms, which read as "gestures only work one
+                // way". Hold-to-speed is now detected inside the loop.
+                var event = awaitPointerEvent()
+                while (event.changes.any { it.pressed }) {
+                    val change = event.changes.firstOrNull { it.pressed }
+                    if (change != null) {
+                        val dy = lastY - change.position.y
+                        val totalDy = anchorY - change.position.y
+                        val totalDx = down.position.x - change.position.x
 
-                            val isVerticalIntent = kotlin.math.abs(totalDy) > kotlin.math.abs(totalDx) * 1.5f
+                        val isVerticalIntent = kotlin.math.abs(totalDy) > kotlin.math.abs(totalDx) * 1.5f
 
-                            if (fullscreen) {
-                                val gesturesOn = VideoGestureSettings.enabled
-                                val isLeftEdge = gesturesOn && downX < 0.20f
-                                val isRightEdge = gesturesOn && downX > 0.80f
+                        if (fullscreen) {
+                            val gesturesOn = VideoGestureSettings.enabled
+                            val isLeftEdge = gesturesOn && downX < 0.35f
+                            val isRightEdge = gesturesOn && downX > 0.65f
 
-                                // Swipe down in the CENTER zone exits fullscreen
-                                // (0.0.8). The edge strips stay brightness/volume,
-                                // so the zones never fight each other.
-                                if (!verticalSwipeHandled && isVerticalIntent && totalDy < -90f && downX in 0.20f..0.80f) {
-                                    verticalSwipeHandled = true
-                                    change.consume()
-                                    onToggleFullscreen()
-                                    return@withTimeoutOrNull null
-                                }
+                            // Swipe down in the CENTER zone exits fullscreen
+                            // (0.0.8). The edge zones stay brightness/volume,
+                            // so the zones never fight each other.
+                            if (!exitHandled && !isDraggingGesture && isVerticalIntent && totalDy < -90f && downX in 0.35f..0.65f) {
+                                exitHandled = true
+                                change.consume()
+                                onToggleFullscreen()
+                                break
+                            }
 
-                                if (!isDraggingGesture && isVerticalIntent && kotlin.math.abs(totalDy) > 60f) {
-                                    if (isLeftEdge || isRightEdge) {
-                                        isDraggingGesture = true
+                            if (!isDraggingGesture && isVerticalIntent && kotlin.math.abs(totalDy) > 24f) {
+                                if (isLeftEdge || isRightEdge) {
+                                    isDraggingGesture = true
+                                    if (isRightEdge && audioManager != null) {
+                                        volumeAcc = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat()
                                     }
                                 }
-                                if (isDraggingGesture) {
-                                    change.consume()
-                                    if (isLeftEdge && activity != null) {
-                                        val window = activity.window
-                                        val attrs = window.attributes
-                                        val currentB = if (attrs.screenBrightness < 0f) 0.5f else attrs.screenBrightness
+                            }
+                            if (isDraggingGesture) {
+                                change.consume()
+                                if (isLeftEdge && activity != null) {
+                                    val window = activity.window
+                                    val attrs = window.attributes
+                                    val currentB = if (attrs.screenBrightness < 0f) 0.5f else attrs.screenBrightness
 
-                                        val newB = (currentB + (dy / size.height) * 0.85f).coerceIn(0.02f, 1f)
-                                        attrs.screenBrightness = newB
-                                        window.attributes = attrs
-                                        gestureHud = Pair(Icons.Rounded.BrightnessMedium, Pair(I18n.t("brightness", "Brightness"), newB))
-                                    } else if (isRightEdge && audioManager != null) {
-                                        val maxV = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                                        val curV = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-
-                                        val deltaV = ((dy / size.height) * maxV * 1.0f).toInt()
-                                        if (deltaV != 0) {
-                                            val newV = (curV + deltaV).coerceIn(0, maxV)
-                                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newV, 0)
-                                            val icon = if (newV == 0) Icons.AutoMirrored.Rounded.VolumeMute else Icons.AutoMirrored.Rounded.VolumeUp
-                                            gestureHud = Pair(icon, Pair(I18n.t("volume", "Volume"), newV.toFloat() / maxV.toFloat()))
-                                        }
+                                    val newB = (currentB + (dy / size.height) * 0.85f).coerceIn(0.02f, 1f)
+                                    attrs.screenBrightness = newB
+                                    window.attributes = attrs
+                                    gestureHud = Pair(Icons.Rounded.BrightnessMedium, Pair(I18n.t("brightness", "Brightness"), newB))
+                                } else if (isRightEdge && audioManager != null && volumeAcc >= 0f) {
+                                    val maxV = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                    volumeAcc = (volumeAcc + (dy / size.height) * maxV).coerceIn(0f, maxV.toFloat())
+                                    val newV = kotlin.math.round(volumeAcc).toInt()
+                                    if (newV != audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) {
+                                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newV, 0)
                                     }
+                                    val icon = if (newV == 0) Icons.AutoMirrored.Rounded.VolumeMute else Icons.AutoMirrored.Rounded.VolumeUp
+                                    gestureHud = Pair(icon, Pair(I18n.t("volume", "Volume"), newV.toFloat() / maxV.toFloat()))
+                                }
+                                lastY = change.position.y
+                            }
+                        } else if (isVerticalIntent && kotlin.math.abs(totalDy) > 90f) {
+                            // Portrait stage drags chain inside ONE drag
+                            // (0.0.8-test2): after each transition the anchor
+                            // resets to the finger, so the same drag can go
+                            // back the other way instead of the gesture
+                            // ending at the first transition.
+                            change.consume()
+                            if (totalDy < -90f) {
+                                // Drag down: enter the tall vertical mode; a
+                                // chained drag down while tall collapses to
+                                // the mini player, as before.
+                                if (!state.portraitTall) {
+                                    state.portraitTall = true
+                                    anchorY = change.position.y
                                     lastY = change.position.y
+                                } else {
+                                    exitHandled = true
+                                    onCollapse()
+                                    break
                                 }
                             } else {
-
-
-                                if (!verticalSwipeHandled && isVerticalIntent && kotlin.math.abs(totalDy) > 90f) {
-                                    verticalSwipeHandled = true
-                                    change.consume()
-                                    if (totalDy < -90f) {
-                                        // Drag down on the video: enter the tall
-                                        // vertical mode (0.0.8); a second drag
-                                        // down while tall collapses to the mini
-                                        // player, as before.
-                                        if (!state.portraitTall) state.portraitTall = true
-                                        else onCollapse()
-                                    } else {
-                                        // Drag up: leave tall mode first, else fullscreen.
-                                        if (state.portraitTall) state.portraitTall = false
-                                        else onToggleFullscreen()
-                                    }
-                                    return@withTimeoutOrNull null
+                                // Drag up: leave tall mode first, else fullscreen.
+                                if (state.portraitTall) {
+                                    state.portraitTall = false
+                                    anchorY = change.position.y
+                                    lastY = change.position.y
+                                } else {
+                                    exitHandled = true
+                                    onToggleFullscreen()
+                                    break
                                 }
                             }
                         }
-                        event = awaitPointerEvent()
-                    }
-                    event.changes.firstOrNull()
-                }
 
-                if (isDraggingGesture || verticalSwipeHandled) {
-                    seekWindow?.cancel()
-                    return@awaitEachGesture
-                }
-
-                if (upEarly == null) {
-                    seekWindow?.cancel()
-                    val elapsed = System.currentTimeMillis() - startTime
-
-                    if (elapsed >= holdSpeedMs - 80L) {
-                        seekWindow?.cancel()
-                        if (!state.scrubDragging && state.beginHoldSpeed()) {
-                            controlsVisible = false
-                            burstActive = false
-                            waitForUpOrCancellation()?.consume()
-                            state.endHoldSpeed()
-                        } else {
-                            waitForUpOrCancellation()?.consume()
+                        // Hold-to-speed: still down past the threshold with
+                        // no drag under way and barely any travel.
+                        if (!isDraggingGesture && !exitHandled &&
+                            System.currentTimeMillis() - startTime >= holdSpeedMs - 80L &&
+                            kotlin.math.abs(totalDy) < 24f && kotlin.math.abs(totalDx) < 24f
+                        ) {
+                            seekWindow?.cancel()
+                            if (!state.scrubDragging && state.beginHoldSpeed()) {
+                                if (HapticsSettings.enabled) currentView.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
+                                controlsVisible = false
+                                burstActive = false
+                                waitForUpOrCancellation()?.consume()
+                                state.endHoldSpeed()
+                            } else {
+                                waitForUpOrCancellation()?.consume()
+                            }
+                            return@awaitEachGesture
                         }
                     }
+                    event = awaitPointerEvent()
+                    if (event.changes.none { it.pressed }) {
+                        upChange = event.changes.firstOrNull()
+                    }
+                }
+
+                if (isDraggingGesture || exitHandled) {
+                    seekWindow?.cancel()
                     return@awaitEachGesture
                 }
-                val up = upEarly
+
+                val up = upChange ?: return@awaitEachGesture
                 up.consume()
                 val x = up.position.x / size.width
                 val side = if (x < 0.4f) -1 else if (x > 0.6f) 1 else 0
@@ -507,7 +534,7 @@ fun VideoContent(
                 Modifier
                     .fillMaxSize()
                     .layerBackdrop(videoBackdrop)
-                    .aspectFit(state.videoAspect, cover = state.zoomToFill)
+                    .aspectFit(state.videoAspect, cover = state.zoomToFill || (state.portraitTall && !fullscreen))
                     .graphicsLayer {
                         val n = nudge.value
                         translationX = burstSide * 5.dp.toPx() * n
@@ -1381,6 +1408,14 @@ fun PlayerSettingsSheet(state: PlayerState, backdrop: Backdrop, onDismiss: () ->
                     title = I18n.t("autoplay", "Autoplay"),
                     value = if (state.autoPlayEnabled) I18n.t("on", "On") else I18n.t("off", "Off"),
                     onClick = { state.toggleAutoPlay() }
+                )
+
+
+                PlayerSettingItem(
+                    icon = Icons.Rounded.Bedtime,
+                    title = I18n.t("sleep_timer", "Sleep timer"),
+                    value = if (state.sleepTimerMinutes <= 0) I18n.t("off", "Off") else "${state.sleepRemainingMin} ${I18n.t("min_short", "min")}",
+                    onClick = { state.cycleSleepTimer() }
                 )
 
 

@@ -934,6 +934,13 @@ private fun AppearanceThemeContent(context: Context) {
             onCheckedChange = { GlassSettings.setGlass(it) },
         )
 
+        SettingsSwitchRow(
+            title = I18n.t("haptics", "Haptics"),
+            subtitle = I18n.t("haptics_sub", "Vibrate on taps and controls"),
+            checked = HapticsSettings.enabled,
+            onCheckedChange = { HapticsSettings.setEnabled(it) },
+        )
+
         HorizontalDivider(color = c.onSurface.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 4.dp))
 
         Column(

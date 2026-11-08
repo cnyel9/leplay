@@ -94,8 +94,18 @@ import kotlin.math.sign
 
 
 private fun View.navHaptic(durationMs: Long = 12L, amplitude: Int = 120) {
-    // Haptics are disabled app-wide (0.0.8, user feedback). The signature is
-    // kept so the existing call sites stay untouched.
+    // Gated by the haptics switch (0.0.8-test2, default off).
+    if (!HapticsSettings.enabled) return
+    val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+    val done = vibrator?.hasVibrator() == true && runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(durationMs, amplitude.coerceIn(1, 255)))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(durationMs)
+        }
+    }.isSuccess
+    if (!done) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
 }
 
 internal val LocalLiquidBottomTabScale =

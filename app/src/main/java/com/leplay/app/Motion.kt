@@ -113,7 +113,7 @@ fun Modifier.pressable(
             interactionSource = interaction,
             indication = null,
             enabled = enabled,
-            onLongClick = onLongClick,
-            onClick = { onClick() },
+            onLongClick = onLongClick?.let { long -> { if (HapticsSettings.enabled) view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); long() } },
+            onClick = { if (HapticsSettings.enabled) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); onClick() },
         )
 }

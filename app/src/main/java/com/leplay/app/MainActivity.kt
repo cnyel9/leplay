@@ -1159,6 +1159,7 @@ private fun NavPill(selected: Tab, onSelect: (Tab) -> Unit, modifier: Modifier =
                         .weight(1f)
                         .fillMaxHeight()
                         .clickable(interactionSource = interaction, indication = null) {
+                            if (HapticsSettings.enabled) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
                             onSelect(t)
                         },
                     shape = RoundedCornerShape(24.dp),

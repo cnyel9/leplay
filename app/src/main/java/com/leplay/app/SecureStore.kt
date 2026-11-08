@@ -23,10 +23,16 @@ class SecureStore(context: Context, name: String) {
             prefs.edit().remove(key).apply()
             return
         }
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey())
-        val sealed = cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-        prefs.edit().putString(key, Base64.encodeToString(sealed, Base64.NO_WRAP)).apply()
+        // Never let a KeyStore hiccup escape as a caller-facing failure
+        // (0.0.8): on some devices the AndroidKeyStore throws transiently,
+        // and a throw here used to abort sign-in with a misleading network
+        // error. On failure the previously stored value is left untouched.
+        runCatching {
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey())
+            val sealed = cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+            prefs.edit().putString(key, Base64.encodeToString(sealed, Base64.NO_WRAP)).apply()
+        }
     }
 
 
@@ -38,7 +44,11 @@ class SecureStore(context: Context, name: String) {
             cipher.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, sealed, 0, IV_BYTES))
             String(cipher.doFinal(sealed, IV_BYTES, sealed.size - IV_BYTES), Charsets.UTF_8)
         }.getOrElse {
-            prefs.edit().remove(key).apply()
+            // Do NOT delete the stored value on a decrypt failure (0.0.8):
+            // a transient KeyStore failure on some devices used to erase
+            // the session permanently. Returning null keeps this read
+            // behaving like "absent" while a later, healthy read can still
+            // recover the value.
             null
         }
     }

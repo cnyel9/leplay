@@ -43,6 +43,7 @@ class LePlayApplication : Application(), ImageLoaderFactory {
         AudioTrackPreference.init(this)
         CaptionPreference.init(this)
         VideoGestureSettings.init(this)
+        HapticsSettings.init(this)
         PlayerControlSettings.init(this)
         PipSettings.init(this)
         MiniPlayerSettings.init(this)

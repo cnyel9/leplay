@@ -191,6 +191,43 @@ class PlayerState(private val scope: CoroutineScope) {
         loopEnabled = next == Player.REPEAT_MODE_ONE
         actionMessage = if (loopEnabled) I18n.t("loop_on", "Loop on") else I18n.t("loop_off", "Loop off")
     }
+
+    /** Sleep timer (0.0.8-test2, user request): pauses playback when it
+     *  fires, for video and music alike since both share this state. The
+     *  selection cycles Off, 10, 20, 30, 45, 60 minutes from the settings
+     *  sheet; the countdown runs on this state's scope so it survives
+     *  sheet dismissals and keeps ticking in the background. */
+    var sleepTimerMinutes by mutableStateOf(0)
+        private set
+    var sleepRemainingMin by mutableStateOf(0)
+        private set
+    private var sleepJob: Job? = null
+
+    fun cycleSleepTimer() {
+        val options = listOf(0, 10, 20, 30, 45, 60)
+        val next = options[(options.indexOf(sleepTimerMinutes) + 1) % options.size]
+        setSleepTimer(next)
+    }
+
+    fun setSleepTimer(minutes: Int) {
+        sleepJob?.cancel()
+        sleepJob = null
+        sleepTimerMinutes = minutes
+        sleepRemainingMin = minutes
+        if (minutes <= 0) return
+        sleepJob = scope.launch {
+            var remainingMs = minutes * 60_000L
+            while (remainingMs > 0) {
+                val step = minOf(remainingMs, 1_000L)
+                delay(step)
+                remainingMs -= step
+                sleepRemainingMin = ((remainingMs + 59_999L) / 60_000L).toInt()
+            }
+            sleepTimerMinutes = 0
+            sleepRemainingMin = 0
+            controller?.pause()
+        }
+    }
     var speedPanelOpen by mutableStateOf(false)
 
     var holdSpeedActive by mutableStateOf(false)
@@ -246,9 +283,10 @@ class PlayerState(private val scope: CoroutineScope) {
     /** Portrait videos go edge-to-edge without rotating the device, exactly like YouTube. */
     var portraitFullscreen by mutableStateOf(false)
 
-    /** Tall vertical viewing mode (0.0.8): entered by dragging down on the
-     *  video area in portrait, the stage grows into a tall frame with the
-     *  video letterboxed in the middle, like YouTube. */
+    /** Fullscreen vertical viewing mode (0.0.8): entered by dragging down
+     *  on the video area in portrait, the stage takes the whole screen and
+     *  the video fills it edge to edge, like YouTube's vertical mode. The
+     *  name is kept from the first iteration, which only grew the frame. */
     var portraitTall by mutableStateOf(false)
 
     val portraitVideo get() = videoAspect < 1.02f

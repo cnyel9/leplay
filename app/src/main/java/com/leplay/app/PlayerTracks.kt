@@ -116,6 +116,31 @@ object VideoGestureSettings {
 }
 
 /**
+ * App-wide haptics switch (0.0.8-test2). Test1 of 0.0.8 removed vibration
+ * everywhere on user feedback; a second user asked for an on/off switch
+ * instead, so the vibration calls are back behind this flag. Default OFF
+ * keeps the test1 behaviour for everyone who never touches the switch.
+ */
+object HapticsSettings {
+    private const val KEY_ENABLED = "haptics_enabled"
+
+    private var prefs: SharedPreferences? = null
+
+    var enabled by mutableStateOf(false)
+        private set
+
+    fun init(context: Context) {
+        prefs = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
+        enabled = prefs?.getBoolean(KEY_ENABLED, false) ?: false
+    }
+
+    fun setEnabled(on: Boolean) {
+        enabled = on
+        prefs?.edit()?.putBoolean(KEY_ENABLED, on)?.apply()
+    }
+}
+
+/**
  * Shared Media3 cache. A Short replayed or a video re-opened plays from disk instead of
  * re-downloading, which is what makes loops and swipe-backs feel instant.
  */
