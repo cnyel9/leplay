@@ -232,7 +232,8 @@ fun SettingsScreen(
                         title = I18n.t("appearance_theme", "Appearance & Theme"),
                         subtitle = I18n.t("appearance_sub", "Theme mode, color palette and UI style"),
                         onClick = { activeFloatingSection = SettingsFloatingSection.APPEARANCE },
-                    )
+                    padded = false,
+                        )
                 }
 
                 SettingsSectionHeader(I18n.t("player_interface", "Player & Interface"))
@@ -242,7 +243,8 @@ fun SettingsScreen(
                         title = I18n.t("general_modification", "General Modification"),
                         subtitle = I18n.t("general_modification_sub", "Font, gestures, quality & downloads"),
                         onClick = { activeFloatingSection = SettingsFloatingSection.GENERAL_MODS },
-                    )
+                    padded = false,
+                        )
                 }
 
                 SettingsSectionHeader(I18n.t("language_section", "Language"))
@@ -252,7 +254,8 @@ fun SettingsScreen(
                         title = I18n.t("language", "Language"),
                         subtitle = LanguageSettings.currentDisplay(),
                         onClick = { activeFloatingSection = SettingsFloatingSection.LANGUAGE },
-                    )
+                    padded = false,
+                        )
                 }
 
                 SettingsSectionHeader(I18n.t("data_storage", "Data & Storage"))
@@ -262,7 +265,8 @@ fun SettingsScreen(
                         title = I18n.t("storage_usage", "Storage Usage"),
                         subtitle = I18n.t("storage_sub", "See phone storage & clear LePlay cache"),
                         onClick = { activeFloatingSection = SettingsFloatingSection.STORAGE_USAGE },
-                    )
+                    padded = false,
+                        )
                 }
 
                 SettingsSectionHeader(I18n.t("about", "About"))
@@ -296,13 +300,15 @@ fun SettingsScreen(
                                 }
                             }
                         }
-                    )
+                    padded = false,
+                        )
                     SettingsRow(
                         icon = Icons.Rounded.History,
                         title = I18n.t("version_history", "Version history"),
                         subtitle = I18n.t("version_history_sub", "Changelogs from 0.0.1 to the latest"),
                         onClick = { activeFloatingSection = SettingsFloatingSection.VERSION_HISTORY },
-                    )
+                    padded = false,
+                        )
                     SettingsRow(
                         icon = Icons.Rounded.FileDownload,
                         title = I18n.t("check_updates", "Check for updates"),
@@ -320,7 +326,8 @@ fun SettingsScreen(
                                 updateFeedback = I18n.t("latest_version_notice", "You're on the latest version ({version}).").replace("{version}", BuildConfig.VERSION_NAME)
                             }
                         },
-                    )
+                    padded = false,
+                        )
                     val openRepo: (String) -> Unit = { url ->
                         runCatching {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -332,7 +339,8 @@ fun SettingsScreen(
                         title = I18n.t("open_source", "Open Source"),
                         subtitle = I18n.t("open_source_sub", "View source code on GitHub"),
                         onClick = { openRepo(leplayRepo) },
-                    )
+                    padded = false,
+                        )
                     val telegram = "https://github.com/cnyel9"
                     val openTelegram: () -> Unit = {
                         val app = Intent(Intent.ACTION_VIEW, Uri.parse(telegram))
@@ -345,7 +353,8 @@ fun SettingsScreen(
                         title = I18n.t("developer", "Developer"),
                         subtitle = "Levi Setiadi (@cnyel9)",
                         onClick = openTelegram,
-                    )
+                    padded = false,
+                        )
                     SettingsRow(
                         icon = Icons.Rounded.Favorite,
                         title = I18n.t("support_developer", "Support Developer"),
@@ -687,6 +696,12 @@ private fun SettingsCard(
 ) {
     val c = MaterialTheme.colorScheme
     val settingsGlass = LocalSettingsBackdrop.current
+    // The card owns the horizontal inset for ALL its rows (rebuild 125):
+    // rows designed for the root page (SettingsRow) bring their own 14.dp,
+    // so the padding must live in the card and the root-page usages pass
+    // padded = false. Rebuild 124 wrapped bare switch rows in cards
+    // without any inset, so titles touched the card edge and switches
+    // overflowed it: the sub-screens read as broken, not glass.
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -696,7 +711,8 @@ private fun SettingsCard(
                 } else {
                     Modifier.pageGlass(RoundedCornerShape(18.dp), c.surfaceContainerHigh)
                 },
-            ),
+            )
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         content = content,
     )
 }
@@ -708,13 +724,14 @@ private fun SettingsRow(
     subtitle: String,
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
+    padded: Boolean = true,
 ) {
     val c = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.pressable(onClick = onClick) else Modifier)
-            .padding(horizontal = 14.dp, vertical = 11.dp),
+            .then(if (padded) Modifier.padding(horizontal = 14.dp, vertical = 11.dp) else Modifier.padding(vertical = 11.dp)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -844,7 +861,7 @@ private fun VersionHistoryContent() {
     ) {
         entries.forEach { (version, date, body) ->
             SettingsCard {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Column(Modifier.padding(vertical = 8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             "LePlay $version",
@@ -948,7 +965,7 @@ private fun DonationCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .pressable(onClick = onCopy)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(

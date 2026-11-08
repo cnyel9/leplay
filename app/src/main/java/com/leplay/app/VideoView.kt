@@ -486,11 +486,26 @@ fun VideoContent(
                 up.consume()
                 val x = up.position.x / size.width
                 val side = if (x < 0.4f) -1 else if (x > 0.6f) 1 else 0
-                if (burstActive && side == burstSide) { seekStep(side); return@awaitEachGesture }
+                // Burst CONTINUATION is time-boxed (rebuild 125). burstActive
+                // used to stay armed indefinitely (its reset effect watches
+                // burstTaps, which a continuing tap itself keeps bumping), so
+                // after any double-tap seek, every later single tap on that
+                // side was eaten as burst continuation: it seeked and the
+                // controls never appeared at all. A tap only continues a
+                // burst when it lands inside the burst window of the
+                // previous tap.
+                if (burstActive && side == burstSide &&
+                    up.uptimeMillis - pendingAt < SeekBurstWindowMs
+                ) {
+                    pendingAt = up.uptimeMillis
+                    seekStep(side)
+                    return@awaitEachGesture
+                }
                 burstActive = false
                 val inSeekWindow = seekWindow?.isActive == true
                 if (side == 0) {
                     seekWindow?.cancel()
+                    pendingAt = up.uptimeMillis
                     if (state.videoZoom > 1.05f) {
                         state.resetZoom()
                     } else {
@@ -504,6 +519,7 @@ fun VideoContent(
                     burstSide = side
                     burstSeconds = 0
                     burstActive = true
+                    pendingAt = up.uptimeMillis
                     seekStep(side)
                 } else {
                     // A side tap may be the first half of a double tap. The
