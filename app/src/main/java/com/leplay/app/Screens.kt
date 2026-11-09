@@ -1108,9 +1108,14 @@ class SearchState(private val scope: CoroutineScope) {
                     }
                     collected to token
                 }.onSuccess { (collected, token) ->
+                    // No second generation bump: generation is the search
+                    // list's resetKey (scroll-to-top). The first page above
+                    // already bumped it and reset the scroll; bumping again
+                    // when the continuation pages merge would yank the list
+                    // back to the top while the user may already be
+                    // scrolling (0.0.9 smoother).
                     results = collected.sortedBy { uploadAgeMinutes(it.uploaded) }
                     nextToken = token
-                    generation++
                 }.onFailure {
                     // A later page failing must not erase the first page
                     // that is already on screen.

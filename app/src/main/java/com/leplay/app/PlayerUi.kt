@@ -2145,7 +2145,10 @@ private fun VideoDetailsBlock(
                 fontSize = 18.sp,
                 lineHeight = 22.sp,
                 letterSpacing = (-0.4).sp,
-                maxLines = 2,
+                // Collapsed the title is capped at two lines; opening the
+                // description shows it in full (0.0.9, user request via
+                // rizkyckz: tap a long title to see all of it).
+                maxLines = if (descriptionOpen) Int.MAX_VALUE else 2,
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(6.dp))

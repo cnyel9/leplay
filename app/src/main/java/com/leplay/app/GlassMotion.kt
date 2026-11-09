@@ -181,7 +181,10 @@ half4 main(float2 coord) {
 
     val modifier: Modifier = Modifier.drawWithContent {
         val progress = pressProgressAnimation.value
-        if (progress > 0f) {
+        // With Liquid Glass off there is no press highlight at all: the
+        // shader was created once and could keep drawing otherwise
+        // (0.0.9 audit L1).
+        if (progress > 0f && GlassQuality.effectsSupported) {
             if (shader != null) {
                 drawRect(Color.White.copy(0.08f * progress), blendMode = BlendMode.Plus)
                 shader.apply {

@@ -167,8 +167,11 @@ fun SettingsScreen(
     var updateFeedback by remember { mutableStateOf<String?>(null) }
 
     val isOverlayOpen = showSignOutConfirm || checkingUpdate || updateFeedback != null
+    // The overlay blur is a glass-era effect: with Liquid Glass off the
+    // Settings column must not blur at all (0.0.9 audit L3).
+    val glassOn = GlassQuality.effectsSupported
     val blurRadius by animateDpAsState(
-        targetValue = if (isOverlayOpen && Build.VERSION.SDK_INT >= 31) 16.dp else 0.dp,
+        targetValue = if (isOverlayOpen && glassOn && Build.VERSION.SDK_INT >= 31) 16.dp else 0.dp,
         animationSpec = tween(220),
         label = "settingsBlur",
     )

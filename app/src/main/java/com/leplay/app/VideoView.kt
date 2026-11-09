@@ -190,6 +190,22 @@ fun VideoContent(
 
 
     var controlsVisible by remember { mutableStateOf(false) }
+    // Center cluster delay (0.0.9, user request via rizkyckz): while the
+    // video is playing, the prev/play/next cluster fades in about a second
+    // after the rest of the chrome, so a double-tap seek never flashes the
+    // navigation buttons. Paused, the cluster is instant: it is the primary
+    // control then. The bars and scrubber are never delayed.
+    var centerReady by remember { mutableStateOf(false) }
+    LaunchedEffect(controlsVisible, state.isPlaying) {
+        if (!controlsVisible) {
+            centerReady = false
+        } else if (!state.isPlaying || TvMode.isTv) {
+            centerReady = true
+        } else {
+            delay(1_000)
+            centerReady = true
+        }
+    }
     var touchedAt by remember { mutableLongStateOf(0L) }
     fun touched() { touchedAt = System.nanoTime() }
     SideEffect { state.videoControlsVisible = controlsVisible }
@@ -773,7 +789,7 @@ fun VideoContent(
                     }
                 }
                 Row(
-                    modifier = Modifier.align(Alignment.Center),
+                    modifier = Modifier.align(Alignment.Center).graphicsLayer { alpha = if (centerReady) 1f else 0f },
                     horizontalArrangement = Arrangement.spacedBy(clusterGap),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
