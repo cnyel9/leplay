@@ -2370,7 +2370,7 @@ object I18n {
             "open_source" to "Sumber Terbuka",
             "open_source_sub" to "Lihat kode sumber di GitHub",
             "developer" to "Pengembang",
-            "support_developer" to "Support Developer",
+            "support_developer" to "Support Pengembang",
             "support_developer_sub" to "Traktir pengembang kopi",
             "support_body" to "LePlay gratis dan tanpa iklan. Kalau LePlay membantumu, kopi seikhlasnya bikin pengembangan terus berjalan. Terima kasih!",
             "copied" to "Disalin",

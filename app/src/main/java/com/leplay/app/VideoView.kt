@@ -158,7 +158,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -322,9 +321,9 @@ fun VideoContent(
         val holdSpeedMs = Motion.HoldSpeedMs
         coroutineScope {
 
-            var seekWindow: Job? = null
             var pendingSide = 0
             var pendingAt = 0L
+            var pendingPreVisible = false
             awaitEachGesture {
                 val down = awaitFirstDown()
                 if (portraitEdgeScrub && down.position.y >= size.height - EdgeScrubTouchPadAbove.roundToPx()) {
@@ -419,14 +418,54 @@ fun VideoContent(
                                     lastY = change.position.y
                                 }
                             } else {
-                                // Portrait vertical swipes (restored 0.0.7
-                                // semantics): swipe down collapses to the
-                                // mini player, swipe up enters fullscreen.
-                                // Entering the tall vertical mode by dragging
-                                // down was REMOVED (owner decision, backlog
-                                // note 33): portraitTall is no longer set
-                                // from any gesture.
-                                if (!verticalSwipeHandled && isVerticalIntent && kotlin.math.abs(totalDy) > 90f) {
+                                // Portrait edge drags (rebuild 128, owner
+                                // request): the same brightness/volume zones
+                                // as fullscreen now work in portrait too.
+                                // Left 35 percent is brightness, right 35
+                                // percent is volume; the center keeps the
+                                // swipe semantics below.
+                                val gesturesOn = VideoGestureSettings.enabled
+                                val isLeftEdge = gesturesOn && downX < 0.35f
+                                val isRightEdge = gesturesOn && downX > 0.65f
+                                if (!isDraggingGesture && isVerticalIntent && kotlin.math.abs(totalDy) > 24f) {
+                                    if (isLeftEdge || isRightEdge) {
+                                        isDraggingGesture = true
+                                        if (isRightEdge && audioManager != null) {
+                                            volumeAcc = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat()
+                                        }
+                                    }
+                                }
+                                if (isDraggingGesture) {
+                                    change.consume()
+                                    if (isLeftEdge && activity != null) {
+                                        val window = activity.window
+                                        val attrs = window.attributes
+                                        val currentB = if (attrs.screenBrightness < 0f) 0.5f else attrs.screenBrightness
+
+                                        val newB = (currentB + (dy / size.height) * 0.85f).coerceIn(0.02f, 1f)
+                                        attrs.screenBrightness = newB
+                                        window.attributes = attrs
+                                        gestureHud = Pair(Icons.Rounded.BrightnessMedium, Pair(I18n.t("brightness", "Brightness"), newB))
+                                    } else if (isRightEdge && audioManager != null && volumeAcc >= 0f) {
+                                        val maxV = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                        volumeAcc = (volumeAcc + (dy / size.height) * maxV).coerceIn(0f, maxV.toFloat())
+                                        val newV = kotlin.math.round(volumeAcc).toInt()
+                                        if (newV != audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) {
+                                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newV, 0)
+                                        }
+                                        val icon = if (newV == 0) Icons.AutoMirrored.Rounded.VolumeMute else Icons.AutoMirrored.Rounded.VolumeUp
+                                        gestureHud = Pair(icon, Pair(I18n.t("volume", "Volume"), newV.toFloat() / maxV.toFloat()))
+                                    }
+                                    lastY = change.position.y
+                                } else if (!verticalSwipeHandled && isVerticalIntent && kotlin.math.abs(totalDy) > 90f) {
+                                    // Portrait vertical swipes (restored
+                                    // 0.0.7 semantics): swipe down collapses
+                                    // to the mini player, swipe up enters
+                                    // fullscreen. Entering the tall vertical
+                                    // mode by dragging down was REMOVED
+                                    // (owner decision, backlog note 33):
+                                    // portraitTall is no longer set from any
+                                    // gesture.
                                     verticalSwipeHandled = true
                                     change.consume()
                                     if (totalDy < -90f) {
@@ -444,16 +483,13 @@ fun VideoContent(
                 }
 
                 if (isDraggingGesture || verticalSwipeHandled) {
-                    seekWindow?.cancel()
                     return@awaitEachGesture
                 }
 
                 if (upEarly == null) {
-                    seekWindow?.cancel()
                     val elapsed = System.currentTimeMillis() - startTime
 
                     if (elapsed >= holdSpeedMs - 80L) {
-                        seekWindow?.cancel()
                         if (!state.scrubDragging && state.beginHoldSpeed()) {
                             if (HapticsSettings.enabled) currentView.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
                             controlsVisible = false
@@ -472,38 +508,32 @@ fun VideoContent(
                 val side = if (x < 0.4f) -1 else if (x > 0.6f) 1 else 0
                 if (burstActive && side == burstSide) { seekStep(side); return@awaitEachGesture }
                 burstActive = false
-                val inSeekWindow = seekWindow?.isActive == true
+                // Instant side taps (rebuild 128, owner report: the held
+                // 0.0.7 window read as a visible delay). A lone side tap now
+                // toggles the controls IMMEDIATELY and remembers the pre-tap
+                // visibility; a second tap on the same side inside the
+                // double-tap window turns the pair into a seek and restores
+                // that visibility, so a double tap never leaves the controls
+                // toggled. Only this tail changed; the restored 0.0.7 loop
+                // above it is untouched.
                 if (side == 0) {
-                    seekWindow?.cancel()
+                    pendingSide = 0
                     if (state.videoZoom > 1.05f) {
                         state.resetZoom()
                     } else {
                         toggleControls()
                     }
-                } else if (inSeekWindow && side == pendingSide && up.uptimeMillis - pendingAt < doubleTapMs) {
-                    seekWindow?.cancel()
-                    controlsVisible = false
+                } else if (side == pendingSide && up.uptimeMillis - pendingAt < doubleTapMs) {
+                    controlsVisible = pendingPreVisible
                     burstSide = side
                     burstSeconds = 0
                     burstActive = true
                     seekStep(side)
                 } else {
-                    // A side tap may be the first half of a double tap: hold the
-                    // controls decision until the double-tap window closes, so
-                    // a double tap seeks without the controls ever flashing.
-                    // A lone tap toggles the controls when the window expires.
-                    val wasVisible = controlsVisible
-                    seekWindow?.cancel()
                     pendingSide = side
                     pendingAt = up.uptimeMillis
-                    seekWindow = launch {
-                        delay(doubleTapMs)
-                        if (wasVisible) {
-                            controlsVisible = false
-                        } else {
-                            toggleControls()
-                        }
-                    }
+                    pendingPreVisible = controlsVisible
+                    toggleControls()
                 }
             }
         }

@@ -11,7 +11,7 @@ android {
         applicationId = "com.leplay.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 127
+        versionCode = 128
         versionName = "0.0.8-test3"
     }
 
