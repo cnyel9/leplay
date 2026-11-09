@@ -928,9 +928,9 @@ private fun SupportDeveloperContent() {
         DonationCard(
             iconRes = R.drawable.dana,
             name = "DANA",
-            number = "0831-5475-6450",
+            number = "0831-5475-6590",
             holder = "Levi Setiadi",
-            onCopy = { copyDonationNumber(context, "083154756450") },
+            onCopy = { copyDonationNumber(context, "083154756590") },
         )
         Spacer(Modifier.height(10.dp))
         DonationCard(
