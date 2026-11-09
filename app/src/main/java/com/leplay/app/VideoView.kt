@@ -196,7 +196,14 @@ fun VideoContent(
     // navigation buttons. Paused, the cluster is instant: it is the primary
     // control then. The bars and scrubber are never delayed.
     var centerReady by remember { mutableStateOf(false) }
-    LaunchedEffect(controlsVisible, state.isPlaying) {
+    // Keyed on controlsVisible ONLY, deliberately: while the controls are
+    // up and the video plays, isPlaying flaps on every seek buffering
+    // (PlayerState mirrors ExoPlayer.isPlaying, false during rebuffer), and
+    // re-keying on it cancelled the pending delay and set centerReady
+    // instantly through the paused branch (0.0.9-test1 device finding: the
+    // delay never happened). The paused check is sampled once, at the
+    // moment the controls appear.
+    LaunchedEffect(controlsVisible) {
         if (!controlsVisible) {
             centerReady = false
         } else if (!state.isPlaying || TvMode.isTv) {

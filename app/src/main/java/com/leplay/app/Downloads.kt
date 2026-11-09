@@ -101,6 +101,11 @@ data class DownloadOption(
 ) {
     val needsMux: Boolean get() = muxed == null
     val isAudioOnly: Boolean get() = height == Downloads.AUDIO_HEIGHT
+    /** Source audio bitrate in kbps for the audio-only option (0 when the
+     *  stream reports none). The "MP3" file is this AAC stream repackaged
+     *  without re-encoding, so the honest label is the source rate
+     *  (0.0.9, user request via rizkyckz). */
+    val bitrateKbps: Int get() = audio?.let { maxOf(it.averageBitrate, it.bitrate) / 1000 } ?: 0
     val label: String get() = if (isAudioOnly) "MP3" else "${height}p${if (hdr) " HDR" else ""}"
     val containerLabel: String get() = if (container == "webm") "WebM" else "MP4"
 }

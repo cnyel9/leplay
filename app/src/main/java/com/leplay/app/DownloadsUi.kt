@@ -202,6 +202,11 @@ private fun QualityChoiceRow(option: DownloadOption, selected: Boolean, onClick:
             val subtitle = if (option.isAudioOnly) {
                 buildString {
                     append(I18n.t("dl_audio_only", "Audio only"))
+                    if (option.bitrateKbps > 0) {
+                        append(" · ")
+                        append(option.bitrateKbps)
+                        append(" kbps")
+                    }
                     if (option.estimatedBytes > 0) {
                         append(" · ")
                         append(formatBytes(option.estimatedBytes))
