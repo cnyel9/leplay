@@ -71,7 +71,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.layout.height
-import androidx.compose.ui.text.InlineTextContent
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.SpanStyle
@@ -1177,7 +1176,7 @@ private fun LiveChatRow(message: LiveChatMessage) {
                 val inline = remember(message.segments) {
                     message.segments.mapIndexedNotNull { index, segment ->
                         val url = segment.emoteUrl ?: return@mapIndexedNotNull null
-                        "chatEmote$index" to InlineTextContent(
+                        "chatEmote$index" to androidx.compose.ui.text.InlineTextContent(
                             Placeholder(20.sp, 20.sp, PlaceholderVerticalAlign.TextCenter),
                         ) {
                             coil.compose.AsyncImage(

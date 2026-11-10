@@ -168,6 +168,10 @@ data class Comment(
     val repliesToken: String?,
 
     val liked: Boolean = false,
+
+    /** Author is a channel sponsor/member (0.1.1, note 52), parsed from
+     *  the comment entity's author block where the server sends it. */
+    val sponsor: Boolean = false,
 )
 
 @Immutable
