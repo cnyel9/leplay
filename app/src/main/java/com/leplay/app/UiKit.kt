@@ -678,6 +678,10 @@ fun LinkifiedText(
     modifier: Modifier = Modifier,
 ) {
     val c = MaterialTheme.colorScheme
+    // Unspecified must resolve against the theme surface colour: BasicText
+    // falls back to black, which made comment bodies render near-black on
+    // the dark theme (0.1.1-test3, note 42 follow-up).
+    val resolvedColor = if (color == Color.Unspecified) c.onSurface else color
     val context = LocalContext.current
     val annotated = remember(text, c.primary) {
         buildAnnotatedString {
@@ -702,7 +706,7 @@ fun LinkifiedText(
     // when wrapped in a SelectionContainer by the caller.
     BasicText(
         text = annotated,
-        style = TextStyle(color = color, fontSize = fontSize, fontWeight = fontWeight, lineHeight = lineHeight),
+        style = TextStyle(color = resolvedColor, fontSize = fontSize, fontWeight = fontWeight, lineHeight = lineHeight),
         modifier = modifier,
     )
 }
