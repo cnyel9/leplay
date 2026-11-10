@@ -1159,38 +1159,41 @@ private fun LiveChatRow(message: LiveChatMessage) {
             if (message.segments.isEmpty()) {
                 Text(message.text, color = c.onSurface, fontSize = 13.5.sp, lineHeight = 18.sp)
             } else {
-                // Emote runs render as inline images inside the text. Each
-                // runs in order (0.1.1, note 46). Built without remember:
-                // the AnnotatedString.Builder appendInlineContent call and
-                // the InlineTextContent composable lambda do not resolve
-                // inside remember blocks on this toolchain, so the content
-                // is composed directly, in composable context.
-                val body = buildAnnotatedString {
-                    message.segments.forEachIndexed { index, segment ->
+                // Emote runs render as images between the text runs, in
+                // order (0.1.1, note 46). A FlowRow keeps the reading order
+                // without the inline-placeholder API.
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    for (segment in message.segments) {
                         if (segment.emoteUrl != null) {
-                            appendInlineContent("chatEmote$index", "emote")
-                        } else {
-                            withStyle(SpanStyle(color = c.onSurface)) { append(segment.text) }
-                        }
-                    }
-                }
-                val inline: Map<String, androidx.compose.ui.text.InlineTextContent> =
-                    message.segments.mapIndexedNotNull { index, segment ->
-                        val url = segment.emoteUrl ?: return@mapIndexedNotNull null
-                        "chatEmote$index" to androidx.compose.ui.text.InlineTextContent(
-                            Placeholder(20.sp, 20.sp, PlaceholderVerticalAlign.TextCenter),
-                        ) {
                             coil.compose.AsyncImage(
                                 model = coil.request.ImageRequest.Builder(context)
-                                    .data(url)
+                                    .data(segment.emoteUrl)
                                     .crossfade(false)
                                     .build(),
                                 contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .align(Alignment.CenterVertically),
                             )
+                        } else if (segment.text.isNotBlank()) {
+                            for (word in segment.text.trim().split(Regex("\\s+"))) {
+                                if (word.isBlank()) continue
+                                Text(
+                                    word,
+                                    color = c.onSurface,
+                                    fontSize = 13.5.sp,
+                                    lineHeight = 18.sp,
+                                    modifier = Modifier.align(Alignment.CenterVertically),
+                                )
+                            }
                         }
-                    }.toMap()
-                Text(body, inlineContent = inline, fontSize = 13.5.sp, lineHeight = 18.sp)
+                    }
+                }
             }
         }
     }
