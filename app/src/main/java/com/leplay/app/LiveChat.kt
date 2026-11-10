@@ -1160,20 +1160,21 @@ private fun LiveChatRow(message: LiveChatMessage) {
                 Text(message.text, color = c.onSurface, fontSize = 13.5.sp, lineHeight = 18.sp)
             } else {
                 // Emote runs render as inline images inside the text. Each
-                // emote occurrence gets its own placeholder id so a message
-                // with several different emotes renders each one correctly.
-                val body = remember(message.id, message.segments) {
-                    buildAnnotatedString {
-                        message.segments.forEachIndexed { index, segment ->
-                            if (segment.emoteUrl != null) {
-                                appendInlineContent("chatEmote$index", "emote")
-                            } else {
-                                withStyle(SpanStyle(color = c.onSurface)) { append(segment.text) }
-                            }
+                // runs in order (0.1.1, note 46). Built without remember:
+                // the AnnotatedString.Builder appendInlineContent call and
+                // the InlineTextContent composable lambda do not resolve
+                // inside remember blocks on this toolchain, so the content
+                // is composed directly, in composable context.
+                val body = buildAnnotatedString {
+                    message.segments.forEachIndexed { index, segment ->
+                        if (segment.emoteUrl != null) {
+                            appendInlineContent("chatEmote$index", "emote")
+                        } else {
+                            withStyle(SpanStyle(color = c.onSurface)) { append(segment.text) }
                         }
                     }
                 }
-                val inline = remember(message.segments) {
+                val inline: Map<String, androidx.compose.ui.text.InlineTextContent> =
                     message.segments.mapIndexedNotNull { index, segment ->
                         val url = segment.emoteUrl ?: return@mapIndexedNotNull null
                         "chatEmote$index" to androidx.compose.ui.text.InlineTextContent(
@@ -1189,7 +1190,6 @@ private fun LiveChatRow(message: LiveChatMessage) {
                             )
                         }
                     }.toMap()
-                }
                 Text(body, inlineContent = inline, fontSize = 13.5.sp, lineHeight = 18.sp)
             }
         }
