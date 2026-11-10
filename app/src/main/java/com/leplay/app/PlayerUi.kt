@@ -241,6 +241,7 @@ fun PlayerScreen(
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     var descriptionOpen by remember(item.id) { mutableStateOf(false) }
     var detailsHeaderBottom by remember { mutableStateOf<androidx.compose.ui.unit.Dp?>(null) }
+    var detailsTitleBottom by remember { mutableStateOf<androidx.compose.ui.unit.Dp?>(null) }
 
     val context = LocalContext.current
     var dominantColor by remember(item.id) { mutableStateOf(c.primaryContainer) }
@@ -385,7 +386,7 @@ fun PlayerScreen(
                         VideoStage(state, morph, onCollapse, onFullscreen, interactive)
                     }
                     if (showDetails) {
-                        VideoDetailsBlock(state, item, details, c, descriptionOpen, { descriptionOpen = !descriptionOpen }, isLiveStream, replay = hasChatReplay, onHeaderBottom = { detailsHeaderBottom = it })
+                        VideoDetailsBlock(state, item, details, c, descriptionOpen, { descriptionOpen = !descriptionOpen }, isLiveStream, replay = hasChatReplay, onHeaderBottom = { detailsHeaderBottom = it }, onTitleBottom = { detailsTitleBottom = it })
                     }
                     Spacer(Modifier.height(bottom + 32.dp))
                 }
@@ -464,7 +465,7 @@ fun PlayerScreen(
                     },
                 contentPadding = PaddingValues(bottom = bottom + 32.dp),
             ) {
-                item(key = "info") { VideoDetailsBlock(state, item, details, c, descriptionOpen, { descriptionOpen = !descriptionOpen }, isLiveStream, replay = hasChatReplay, onHeaderBottom = { detailsHeaderBottom = it }) }
+                item(key = "info") { VideoDetailsBlock(state, item, details, c, descriptionOpen, { descriptionOpen = !descriptionOpen }, isLiveStream, replay = hasChatReplay, onHeaderBottom = { detailsHeaderBottom = it }, onTitleBottom = { detailsTitleBottom = it }) }
                 val related = state.displayRelated
                 if (related.isNotEmpty()) {
                     item(key = "moreTitle") { SectionTitle(I18n.t("more_videos", "More videos")) }
@@ -502,8 +503,14 @@ fun PlayerScreen(
             val screenW = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
             val videoBottom = top + top + (screenW - StageSideGap * 2) / state.stageAspect
             val fallbackTop = videoBottom + 10.dp
-            val partialTop = detailsHeaderBottom
+            // Portrait panels anchor to the bottom of the video TITLE
+            // (0.1.1, note 48, per Levi's reference screenshot). The locked
+            // action-row measurement above stays intact; if the title has
+            // not been measured yet the panels fall back to it.
+            val partialTop = detailsTitleBottom
                 ?.let { (it + 6.dp).coerceIn(fallbackTop, fallbackTop + 320.dp) }
+                ?: detailsHeaderBottom
+                    ?.let { (it + 6.dp).coerceIn(fallbackTop, fallbackTop + 320.dp) }
                 ?: fallbackTop
             when {
                 isLiveStream -> {
@@ -702,12 +709,12 @@ private fun SubscribeButton(subscribed: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .squishOn(subscribed)
-            .height(34.dp)
+            .height(30.dp)
             .pressable(onClick = onClick)
             .clip(RoundedCornerShape(radius))
             .background(containerColor)
             .animateContentSize(spring(dampingRatio = 0.7f, stiffness = 500f))
-            .padding(horizontal = if (subscribed) 10.dp else 14.dp),
+            .padding(horizontal = if (subscribed) 9.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (subscribed) {
@@ -717,7 +724,7 @@ private fun SubscribeButton(subscribed: Boolean, onClick: () -> Unit) {
         Text(
             if (subscribed) I18n.t("subscribed", "Subscribed") else I18n.t("subscribe", "Subscribe"),
             color = contentColor,
-            fontWeight = FontWeight.Bold, fontSize = 12.5.sp,
+            fontWeight = FontWeight.Bold, fontSize = 11.5.sp,
         )
     }
 }
@@ -2127,6 +2134,7 @@ private fun VideoDetailsBlock(
     isLiveStream: Boolean,
     replay: Boolean = false,
     onHeaderBottom: ((androidx.compose.ui.unit.Dp) -> Unit)? = null,
+    onTitleBottom: ((androidx.compose.ui.unit.Dp) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val hasDescription = !details?.description.isNullOrBlank()
@@ -2150,6 +2158,14 @@ private fun VideoDetailsBlock(
                 // rizkyckz: tap a long title to see all of it).
                 maxLines = if (descriptionOpen) Int.MAX_VALUE else 2,
                 overflow = TextOverflow.Ellipsis,
+                // A second, independent anchor (0.1.1, note 48): the bottom
+                // of the title text itself, used by the portrait panels.
+                // The locked action-row anchor above is untouched.
+                modifier = Modifier.onGloballyPositioned { coords ->
+                    onTitleBottom?.let { cb ->
+                        cb(with(density) { (coords.positionInWindow().y + coords.size.height).roundToInt().toDp() })
+                    }
+                },
             )
             Spacer(Modifier.height(6.dp))
             val stats = listOfNotNull(
@@ -2186,8 +2202,8 @@ private fun VideoDetailsBlock(
         ) {
             if (details != null) {
                 SelectionContainer {
-                    Text(
-                        details.description,
+                    LinkifiedText(
+                        text = details.description,
                         modifier = Modifier.padding(top = 10.dp),
                         color = c.onSurfaceVariant,
                         fontSize = 14.sp,
@@ -2206,12 +2222,12 @@ private fun VideoDetailsBlock(
                 Modifier.weight(1f).pressable(enabled = channelUrl != null, pressedScale = 0.97f) { channelUrl?.let(openChannel) },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ChannelAvatar(details?.item?.avatar ?: item.avatar, item.channel, size = 46)
-                Spacer(Modifier.width(12.dp))
+                ChannelAvatar(details?.item?.avatar ?: item.avatar, item.channel, size = 38)
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(item.channel, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    ChannelNameWithBadge(item.channel, details?.verified == true || item.verified, fontSize = 13.5.sp, maxLines = 1)
                     details?.subscribers?.takeIf { it > 0 }?.let {
-                        Text("${formatCount(it)} ${I18n.t("subscribers", "subscribers")}", color = c.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("${formatCount(it)} ${I18n.t("subscribers", "subscribers")}", color = c.onSurfaceVariant, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

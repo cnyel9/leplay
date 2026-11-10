@@ -31,7 +31,11 @@ object CommentPosting {
 
     private val cache = HashMap<String, VideoParams>()
     private val lock = Mutex()
-    private const val MAX_PAGES = 8
+    // 0.1.1 (note 49): the old cap of 8 pages left comments deep in the
+    // list unindexed, so liking them failed with "couldn't find that
+    // comment". 40 pages covers realistically deep scroll positions while
+    // still bounding the crawl.
+    private const val MAX_PAGES = 40
 
     fun forget(videoId: String) { cache.remove(videoId) }
 
@@ -56,7 +60,7 @@ object CommentPosting {
                 pages++
             }
             vp.reply[threadId]
-        } ?: throw IOException("Couldn't find that comment to reply to. Try again.")
+        } ?: throw IOException(I18n.t("comment_reply_not_found", "Couldn't find that comment to reply to. Try again."))
         checkPosted(
             InnerTube.post("comment/create_comment_reply", JSONObject().put("commentText", text).put("createReplyParams", params)),
         )
@@ -74,7 +78,7 @@ object CommentPosting {
             }
             val (likeAction, unlikeAction) = vp.like[commentId] ?: (null to null)
             if (liked) likeAction else unlikeAction
-        } ?: throw IOException("Couldn't find that comment to like. Try again.")
+        } ?: throw IOException(I18n.t("comment_like_not_found", "Couldn't find that comment to like. Try again."))
         InnerTube.post("comment/perform_comment_action", JSONObject().put("actions", JSONArray().put(action)))
         Unit
     }

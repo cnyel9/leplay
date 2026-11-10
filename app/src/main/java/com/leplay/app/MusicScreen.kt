@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -122,11 +123,55 @@ class MusicFeedState(private val scope: CoroutineScope) {
     var loading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
 
+    /** Filter chips parsed from the home chip cloud (0.1.1, Paket B). */
+    var chips by mutableStateOf<List<MusicHomeChip>>(emptyList())
+    var selectedChipParams by mutableStateOf<String?>(null)
+        private set
+    var loadingMore by mutableStateOf(false)
+        private set
+    private var homeContinuation: String? = null
+    val hasMoreHome: Boolean get() = homeContinuation != null
+
     private var initialLoaded = false
     private var job: Job? = null
 
     fun ensureLoaded(lib: LibraryData) {
         if (!initialLoaded && !loading) loadAll(lib)
+    }
+
+    /** Re-requests the home feed with a chip's params (Paket B chips). */
+    fun selectChip(chip: MusicHomeChip?) {
+        if (loading) return
+        selectedChipParams = chip?.params
+        loading = true
+        job?.cancel()
+        job = scope.launch {
+            val page = runCatching { InnerTube.musicHome(chip?.params) }.getOrNull()
+            if (page != null) {
+                shelves = page.shelves
+                if (page.chips.isNotEmpty()) chips = page.chips
+                homeContinuation = page.continuation
+            }
+            loading = false
+        }
+    }
+
+    /** Appends the next page of home shelves (Paket B continuation). */
+    fun loadMoreHome() {
+        val token = homeContinuation ?: return
+        if (loadingMore || loading) return
+        loadingMore = true
+        scope.launch {
+            val page = runCatching { InnerTube.musicHomeMore(token) }.getOrNull()
+            if (page != null) {
+                val seen = shelves.mapTo(HashSet()) { it.title }
+                shelves = shelves + page.shelves.filter { seen.add(it.title) }
+                homeContinuation = page.continuation
+            } else {
+                homeContinuation = null
+            }
+            loadingMore = false
+        }
     }
 
     fun loadAll(lib: LibraryData) {
@@ -142,7 +187,7 @@ class MusicFeedState(private val scope: CoroutineScope) {
 
 
                     val homeDeferred = async {
-                        runCatching { InnerTube.musicHome() }.getOrDefault(emptyList())
+                        runCatching { InnerTube.musicHome() }.getOrNull()
                     }
 
 
@@ -171,11 +216,13 @@ class MusicFeedState(private val scope: CoroutineScope) {
                         } else emptyList()
                     }
 
-                    val fetchedShelves = homeDeferred.await()
+                    val fetchedHome = homeDeferred.await()
                     val fetchedHistory = historyDeferred.await()
                     val fetchedLiked = likedDeferred.await()
 
-                    shelves = fetchedShelves
+                    shelves = fetchedHome?.shelves ?: emptyList()
+                    chips = fetchedHome?.chips ?: emptyList()
+                    homeContinuation = fetchedHome?.continuation
                     recentPlays = fetchedHistory
                     likedTracks = fetchedLiked
                 }
@@ -389,12 +436,68 @@ fun MusicScreen(
                         }
                     }
                     else -> {
+                        // Paket B: approaching the end of the home list
+                        // loads the next page of shelves (continuation).
+                        val nearHomeEnd by remember {
+                            derivedStateOf {
+                                (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >=
+                                    listState.layoutInfo.totalItemsCount - 4
+                            }
+                        }
+                        LaunchedEffect(nearHomeEnd, state.hasMoreHome) {
+                            if (nearHomeEnd && state.hasMoreHome) state.loadMoreHome()
+                        }
                         LazyColumn(
                             state = listState,
                             contentPadding = contentPadding,
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(24.dp),
                         ) {
+
+                            if (state.chips.isNotEmpty()) {
+                                item(key = "home_chips") {
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.padding(top = 4.dp),
+                                    ) {
+                                        item(key = "chip_all") {
+                                            val selected = state.selectedChipParams == null
+                                            Box(
+                                                Modifier
+                                                    .clip(RoundedCornerShape(16.dp))
+                                                    .background(if (selected) c.primary else c.surfaceContainerHighest)
+                                                    .pressable { state.selectChip(null) }
+                                                    .padding(horizontal = 14.dp, vertical = 7.dp),
+                                            ) {
+                                                Text(
+                                                    "All",
+                                                    color = if (selected) c.onPrimary else c.onSurface,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                )
+                                            }
+                                        }
+                                        items(state.chips, key = { "chip_" + it.params }) { chip ->
+                                            val selected = state.selectedChipParams == chip.params
+                                            Box(
+                                                Modifier
+                                                    .clip(RoundedCornerShape(16.dp))
+                                                    .background(if (selected) c.primary else c.surfaceContainerHighest)
+                                                    .pressable { state.selectChip(chip) }
+                                                    .padding(horizontal = 14.dp, vertical = 7.dp),
+                                            ) {
+                                                Text(
+                                                    chip.label,
+                                                    color = if (selected) c.onPrimary else c.onSurface,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
                             if (state.recentPlays.isNotEmpty()) {
                                 item(key = "section_recent_plays") {
@@ -454,49 +557,129 @@ fun MusicScreen(
                                         .filter { it.videoId != null && it.browseId.isNullOrEmpty() && it.playlistId.isNullOrEmpty() }
                                         .mapNotNull { it.toVideoItem() }
                                 }
+                                val openShelfItem: (MusicShelfItem) -> Unit = { item ->
+                                    val direct = item.toVideoItem()
+                                    val isTrack = direct != null &&
+                                        item.browseId.isNullOrEmpty() &&
+                                        item.playlistId.isNullOrEmpty()
+                                    if (isTrack && direct != null) {
+                                        val index = directTracks.indexOfFirst { it.id == direct.id }
+                                        onOpenLooseQueue(directTracks, if (index >= 0) index else 0)
+                                    } else {
+                                        loadMix(item)
+                                    }
+                                }
+                                val optionsForItem: (MusicShelfItem) -> Unit = { item ->
+                                    val direct = item.toVideoItem()
+                                    if (direct != null && item.browseId.isNullOrEmpty() && item.playlistId.isNullOrEmpty()) {
+                                        trackOptionsFor = direct
+                                    } else {
+                                        scope.launch {
+                                            InnerTube.resolveMusicItem(item)?.let { trackOptionsFor = it }
+                                        }
+                                    }
+                                }
                                 Column(modifier = (if (GlassSettings.liteMode) Modifier else Modifier.animateItem()).fillMaxWidth()) {
                                     MusicSectionHeader(
                                         title = shelf.title,
                                         subtitle = shelf.subtitle ?: I18n.t("music_curated_sub", "Curated for you by YouTube Music"),
                                         icon = Icons.Rounded.PlayArrow,
                                     )
-                                    LazyRow(
-                                        contentPadding = PaddingValues(horizontal = 16.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                        modifier = Modifier.padding(top = 10.dp),
-                                    ) {
-                                        items(shelf.items, key = { "item_" + (it.videoId ?: it.browseId ?: it.title) }) { item ->
-                                            Box(if (GlassSettings.liteMode) Modifier else Modifier.animateItem()) {
-                                            MusicShelfCard(
-                                                item = item,
-                                                onClick = {
-                                                    val direct = item.toVideoItem()
-                                                    val isTrack = direct != null &&
-                                                        item.browseId.isNullOrEmpty() &&
-                                                        item.playlistId.isNullOrEmpty()
-                                                    if (isTrack && direct != null) {
-
-
-                                                        val index = directTracks.indexOfFirst { it.id == direct.id }
-                                                        onOpenLooseQueue(directTracks, if (index >= 0) index else 0)
-                                                    } else {
-
-                                                        loadMix(item)
-                                                    }
-                                                },
-                                                onOptions = {
-                                                    val direct = item.toVideoItem()
-                                                    if (direct != null && item.browseId.isNullOrEmpty() && item.playlistId.isNullOrEmpty()) {
-                                                        trackOptionsFor = direct
-                                                    } else {
-                                                        scope.launch {
-                                                            InnerTube.resolveMusicItem(item)?.let { trackOptionsFor = it }
+                                    when (shelf.kind) {
+                                        // Quick Picks: a 4-row horizontal grid
+                                        // of compact song rows (Paket B).
+                                        MusicShelfKind.QuickPicks -> {
+                                            val rows = remember(shelf) { shelf.items.chunked(4) }
+                                            LazyRow(
+                                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                modifier = Modifier.padding(top = 6.dp),
+                                            ) {
+                                                items(rows, key = { "qp_" + (it.firstOrNull()?.videoId ?: it.firstOrNull()?.title ?: "") }) { columnItems ->
+                                                    Column(Modifier.width(300.dp)) {
+                                                        columnItems.forEach { item ->
+                                                            MusicShelfSongRow(
+                                                                item = item,
+                                                                onClick = { openShelfItem(item) },
+                                                                onOptions = { optionsForItem(item) },
+                                                            )
                                                         }
                                                     }
-                                                },
-                                            )
+                                                }
                                             }
                                         }
+                                        // Song shelves: vertical rows, first
+                                        // screenful shown (Paket B).
+                                        MusicShelfKind.SongList -> {
+                                            Column(Modifier.padding(top = 6.dp)) {
+                                                shelf.items.take(10).forEachIndexed { index, item ->
+                                                    MusicShelfSongRow(
+                                                        item = item,
+                                                        index = index,
+                                                        onClick = { openShelfItem(item) },
+                                                        onOptions = { optionsForItem(item) },
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        // Mood / genre button shelves render
+                                        // as a wrapping grid of labels.
+                                        MusicShelfKind.Grid -> {
+                                            Column(
+                                                Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                            ) {
+                                                shelf.items.chunked(2).forEach { pair ->
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                        pair.forEach { item ->
+                                                            Box(
+                                                                Modifier
+                                                                    .weight(1f)
+                                                                    .clip(RoundedCornerShape(10.dp))
+                                                                    .background(c.surfaceContainerHighest)
+                                                                    .pressable { loadMix(item) }
+                                                                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                                                            ) {
+                                                                Text(
+                                                                    item.title,
+                                                                    fontSize = 13.sp,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    color = c.onSurface,
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis,
+                                                                )
+                                                            }
+                                                        }
+                                                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        MusicShelfKind.Carousel -> {
+                                            LazyRow(
+                                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                                modifier = Modifier.padding(top = 10.dp),
+                                            ) {
+                                                items(shelf.items, key = { "item_" + (it.videoId ?: it.browseId ?: it.title) }) { item ->
+                                                    Box(if (GlassSettings.liteMode) Modifier else Modifier.animateItem()) {
+                                                        MusicShelfCard(
+                                                            item = item,
+                                                            onClick = { openShelfItem(item) },
+                                                            onOptions = { optionsForItem(item) },
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (state.loadingMore) {
+                                item(key = "home_loading_more") {
+                                    Box(Modifier.fillMaxWidth().padding(20.dp), Alignment.Center) {
+                                        CircularProgressIndicator(color = c.primary, strokeWidth = 3.dp, modifier = Modifier.size(26.dp))
                                     }
                                 }
                             }
@@ -1457,6 +1640,87 @@ private fun MusicMixScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/** Compact song row for home shelves (Quick Picks grid, song lists). */
+@Composable
+private fun MusicShelfSongRow(
+    item: MusicShelfItem,
+    index: Int? = null,
+    onClick: () -> Unit,
+    onOptions: () -> Unit,
+) {
+    val c = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pressable(pressedScale = 0.98f, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (index != null) {
+            Text(
+                "${index + 1}",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = c.onSurfaceVariant.copy(alpha = 0.65f),
+                modifier = Modifier.width(24.dp),
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(RoundedCornerShape(9.dp))
+                .background(c.surfaceContainerHighest),
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(highResMusicThumbnail(item.thumbnail) ?: item.videoId?.let { sharpenFeedThumbnail(null, it) })
+                    .crossfade(!GlassSettings.liteMode)
+                    .build(),
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Spacer(Modifier.width(11.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                item.title,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = c.onSurface,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    item.subtitle,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = c.onSurfaceVariant.copy(alpha = 0.8f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (item.durationSec > 0) {
+                    Text(
+                        " · ${formatDuration(item.durationSec * 1000)}",
+                        fontSize = 11.sp,
+                        color = c.onSurfaceVariant.copy(alpha = 0.6f),
+                    )
+                }
+            }
+        }
+        IconButton(onClick = onOptions, modifier = Modifier.size(34.dp)) {
+            Icon(
+                Icons.Rounded.MoreVert,
+                contentDescription = I18n.t("options", "Options"),
+                tint = c.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.size(18.dp),
+            )
         }
     }
 }

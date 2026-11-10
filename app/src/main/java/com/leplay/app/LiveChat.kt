@@ -42,6 +42,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.People
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,8 +70,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.text.InlineTextContent
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
@@ -91,6 +101,11 @@ import java.io.ByteArrayOutputStream
 import java.net.URLEncoder
 import java.util.UUID
 
+/** One run of a chat message: plain text or a channel emote image
+ *  (0.1.1, note 46). */
+@Immutable
+data class ChatSegment(val text: String = "", val emoteUrl: String? = null)
+
 @Immutable
 data class LiveChatMessage(
     val id: String,
@@ -99,12 +114,21 @@ data class LiveChatMessage(
     val avatar: String? = null,
     val pending: Boolean = false,
     val offsetMs: Long? = null,
+
+    /** Message runs with emotes kept as images; empty for plain messages. */
+    val segments: List<ChatSegment> = emptyList(),
+    val isMember: Boolean = false,
+    val isModerator: Boolean = false,
+    val isOwner: Boolean = false,
+    val memberBadgeUrl: String? = null,
 )
 
 internal data class LiveChatPage(
     val messages: List<LiveChatMessage>,
     val next: String?,
     val sendParams: String? = null,
+    val viewerCount: String? = null,
+    val membersOnly: Boolean = false,
 )
 
 internal data class ReplayPage(
@@ -117,6 +141,7 @@ internal data class LiveChatStart(
     val continuation: String,
     val channelId: String?,
     val sendParams: String?,
+    val viewerCount: String? = null,
 )
 
 @Stable
@@ -131,6 +156,14 @@ class LiveChatState(private val scope: CoroutineScope) {
         private set
     var draft by mutableStateOf("")
     var sending by mutableStateOf(false)
+        private set
+
+    /** Concurrent viewers text for the header, e.g. "1.234" (0.1.1, note 45). */
+    var viewerCount by mutableStateOf<String?>(null)
+        private set
+
+    /** Chat is members-only: the composer is replaced by a notice (note 46). */
+    var membersOnly by mutableStateOf(false)
         private set
     var sendError by mutableStateOf<String?>(null)
         private set
@@ -151,6 +184,8 @@ class LiveChatState(private val scope: CoroutineScope) {
         live = false
         error = null
         sendError = null
+        viewerCount = null
+        membersOnly = false
         job = scope.launch {
             try {
                 val start: LiveChatStart = withContext(Dispatchers.IO) { LiveChatFeed.start(id) }
@@ -161,6 +196,7 @@ class LiveChatState(private val scope: CoroutineScope) {
                     }
                 if (channelId == null) channelId = start.channelId
                 if (sendParams == null) sendParams = start.sendParams
+                if (viewerCount == null) viewerCount = start.viewerCount
                 var cursor = start.continuation
                 while (isActive) {
                     val page = withContext(Dispatchers.IO) { LiveChatFeed.page(cursor) }
@@ -169,6 +205,8 @@ class LiveChatState(private val scope: CoroutineScope) {
                         messages = (messages + page.messages.filter { seen.add(it.id) }).takeLast(220)
                     }
                     if (sendParams == null) sendParams = page.sendParams
+                    page.viewerCount?.let { viewerCount = it }
+                    if (page.membersOnly) membersOnly = true
                     page.next?.takeIf { it.isNotBlank() }?.let { cursor = it }
                     live = true
                     loading = false
@@ -336,10 +374,18 @@ object LiveChatFeed {
         var channelId: String? = null
         var ownerId: String? = null
         var sendParams: String? = null
+        var viewers: String? = null
         root.walk { key, obj ->
             when (key) {
                 "liveChatRenderer" -> {
                     if (token == null) token = firstContinuation(obj.optJSONArray("continuations"))
+                }
+
+                "videoViewCountRenderer" -> {
+                    if (viewers == null) {
+                        val raw = obj.text("viewCount")
+                        viewers = raw?.replace(Regex("[^0-9.,KMBkmb]"), "")?.trim()?.ifBlank { null }
+                    }
                 }
 
                 "videoOwnerRenderer" -> {
@@ -384,6 +430,7 @@ object LiveChatFeed {
             continuation = continuation,
             channelId = ownerId ?: channelId,
             sendParams = sendParams,
+            viewerCount = viewers,
         )
     }
 
@@ -392,6 +439,7 @@ object LiveChatFeed {
         val out = ArrayList<LiveChatMessage>()
         var next: String? = null
         var sendParams: String? = null
+        var membersOnly = false
         root.walk { key, obj ->
             when (key) {
                 "liveChatTextMessageRenderer",
@@ -401,6 +449,18 @@ object LiveChatFeed {
 
                 "liveChatContinuation" -> {
                     next = firstContinuation(obj.optJSONArray("continuations")) ?: next
+                }
+
+                "liveChatMessageInputRenderer" -> {
+                    // A members-only stream's input renderer carries no
+                    // send button; detect the mode so the UI can show the
+                    // blocked-style notice (0.1.1, note 46).
+                    val modeText = obj.text("placeholderText").orEmpty()
+                    if (obj.optJSONObject("sendButton") == null ||
+                        modeText.contains("member", ignoreCase = true)
+                    ) {
+                        membersOnly = true
+                    }
                 }
 
                 "sendLiveChatMessageEndpoint",
@@ -425,7 +485,7 @@ object LiveChatFeed {
                 }
             }
         }
-        return LiveChatPage(out.distinctBy { it.id }, next, sendParams)
+        return LiveChatPage(out.distinctBy { it.id }, next, sendParams, membersOnly = membersOnly)
     }
 
     /**
@@ -624,12 +684,68 @@ object LiveChatFeed {
 
     private fun parseMessage(obj: JSONObject): LiveChatMessage? {
         val author = obj.text("authorName").orEmpty().trim()
-        val text = obj.text("message").orEmpty().trim()
+        // Keep message runs as segments so custom channel emotes render as
+        // images instead of being flattened away (0.1.1, note 46). The
+        // flattened [text] stays as the fallback and for plain messages.
+        val segments = ArrayList<ChatSegment>()
+        val flat = StringBuilder()
+        obj.optJSONObject("message")?.optJSONArray("runs")?.let { runs ->
+            for (i in 0 until runs.length()) {
+                val run = runs.optJSONObject(i) ?: continue
+                val runText = run.optString("text")
+                if (runText.isNotEmpty()) {
+                    segments.add(ChatSegment(text = runText))
+                    flat.append(runText)
+                    continue
+                }
+                val emoji = run.optJSONObject("emoji") ?: continue
+                val url = emoji.optJSONObject("image")?.thumbnails()?.lastOrNull()
+                if (url != null) {
+                    segments.add(ChatSegment(emoteUrl = url))
+                    flat.append(emoji.optJSONArray("shortcuts")?.optString(0).orEmpty())
+                }
+            }
+        }
+        val text = if (segments.isNotEmpty()) flat.toString().trim() else obj.text("message").orEmpty().trim()
         if (author.isBlank() || text.isBlank()) return null
         val avatar = obj.optJSONObject("authorPhoto")?.thumbnails()?.lastOrNull()
         val id = obj.optString("id").ifBlank { obj.optString("messageId") }
             .ifBlank { "${author}_${text}_${obj.optString("timestampUsec")}" }
-        return LiveChatMessage(id = id, author = author, text = text, avatar = avatar)
+        var isMember = false
+        var isModerator = false
+        var isOwner = false
+        var memberBadge: String? = null
+        obj.optJSONArray("authorBadges")?.let { badges ->
+            for (i in 0 until badges.length()) {
+                val badge = badges.optJSONObject(i)?.optJSONObject("liveChatAuthorBadgeRenderer") ?: continue
+                val tooltip = badge.optString("tooltip")
+                val tooltipLower = tooltip.lowercase()
+                val custom = badge.optJSONObject("customThumbnail")?.thumbnails()?.lastOrNull()
+                when {
+                    tooltipLower.contains("member") || tooltipLower.contains("sponsor") -> {
+                        isMember = true
+                        if (memberBadge == null) memberBadge = custom
+                    }
+                    tooltipLower.contains("moderator") -> isModerator = true
+                    tooltipLower.contains("owner") -> isOwner = true
+                    custom != null && (badge.optString("icon").contains("MEMBER", ignoreCase = true)) -> {
+                        isMember = true
+                        if (memberBadge == null) memberBadge = custom
+                    }
+                }
+            }
+        }
+        return LiveChatMessage(
+            id = id,
+            author = author,
+            text = text,
+            avatar = avatar,
+            segments = if (segments.any { it.emoteUrl != null }) segments else emptyList(),
+            isMember = isMember,
+            isModerator = isModerator,
+            isOwner = isOwner,
+            memberBadgeUrl = memberBadge,
+        )
     }
 }
 
@@ -751,8 +867,23 @@ fun LiveChatContent(
 ) {
     val c = MaterialTheme.colorScheme
     val list = rememberLazyListState()
-    LaunchedEffect(state.messages.size) {
-        if (state.messages.isNotEmpty()) runCatching { list.animateScrollToItem(state.messages.lastIndex) }
+    val scope = rememberCoroutineScope()
+    // Follow the tail only while the user is at (or near) the bottom
+    // (0.1.1, note 47): scrolling up to read history stops the follow, and
+    // the small arrow button resumes it.
+    val atBottom by remember {
+        derivedStateOf {
+            val info = list.layoutInfo
+            val last = info.totalItemsCount - 1
+            last < 0 || (info.visibleItemsInfo.lastOrNull()?.index ?: 0) >= last - 2
+        }
+    }
+    var following by remember { mutableStateOf(true) }
+    LaunchedEffect(atBottom) { if (atBottom) following = true }
+    LaunchedEffect(state.messages.size, following) {
+        if (following && state.messages.isNotEmpty()) {
+            runCatching { list.animateScrollToItem(state.messages.lastIndex) }
+        }
     }
     Column(modifier) {
         Row(
@@ -767,6 +898,17 @@ fun LiveChatContent(
             )
             Spacer(Modifier.width(8.dp))
             Text(I18n.t("live_chat", "Live chat"), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+            state.viewerCount?.let { count ->
+                Spacer(Modifier.width(10.dp))
+                Icon(
+                    Icons.Rounded.People,
+                    contentDescription = null,
+                    tint = c.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(count, color = c.onSurfaceVariant, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+            }
             Spacer(Modifier.weight(1f))
             Box(
                 Modifier.size(42.dp).pressable(onClick = onClose),
@@ -803,14 +945,41 @@ fun LiveChatContent(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
                 )
 
-                else -> LazyColumn(
-                    state = list,
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(9.dp),
-                ) {
-                    items(state.messages, key = { it.id }) { message ->
-                        LiveChatRow(message)
+                else -> {
+                    LazyColumn(
+                        state = list,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        items(state.messages, key = { it.id }) { message ->
+                            LiveChatRow(message)
+                        }
+                    }
+                    if (!following && state.messages.isNotEmpty()) {
+                        // Small, unobtrusive jump-to-latest button (note 47).
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 14.dp, bottom = 10.dp)
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(c.primary)
+                                .pressable {
+                                    following = true
+                                    scope.launch {
+                                        runCatching { list.animateScrollToItem(state.messages.lastIndex) }
+                                    }
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.Rounded.KeyboardArrowDown,
+                                I18n.t("new_messages_below", "New messages"),
+                                tint = c.onPrimary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -823,7 +992,33 @@ fun LiveChatContent(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
             )
         }
-        if (Account.signedIn) {
+        if (Account.signedIn && state.membersOnly) {
+            // Members-only chat: a blocked-style notice instead of the
+            // composer (0.1.1, note 46), mirroring the signed-out bar.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(c.surfaceContainer)
+                    .padding(horizontal = 16.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Rounded.People,
+                    contentDescription = null,
+                    tint = c.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    I18n.t("members_only_chat", "Members-only chat"),
+                    color = c.onSurfaceVariant,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        } else if (Account.signedIn) {
             LiveChatComposer(state)
         } else {
             Row(
@@ -928,19 +1123,76 @@ private fun LiveChatComposer(state: LiveChatState) {
 @Composable
 private fun LiveChatRow(message: LiveChatMessage) {
     val c = MaterialTheme.colorScheme
+    val context = LocalContext.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         ChannelAvatar(message.avatar, message.author, size = 26)
         Spacer(Modifier.width(9.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                message.author,
-                color = c.onSurfaceVariant,
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(message.text, color = c.onSurface, fontSize = 13.5.sp, lineHeight = 18.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    message.author,
+                    // Members chat in green; owner and moderator get their
+                    // own tints (0.1.1, note 46).
+                    color = when {
+                        message.isOwner -> Color(0xFFF5A623)
+                        message.isModerator -> Color(0xFF5E84F1)
+                        message.isMember -> Color(0xFF2BA640)
+                        else -> c.onSurfaceVariant
+                    },
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                message.memberBadgeUrl?.let { badge ->
+                    Spacer(Modifier.width(5.dp))
+                    coil.compose.AsyncImage(
+                        model = coil.request.ImageRequest.Builder(context)
+                            .data(badge)
+                            .crossfade(false)
+                            .build(),
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+            if (message.segments.isEmpty()) {
+                Text(message.text, color = c.onSurface, fontSize = 13.5.sp, lineHeight = 18.sp)
+            } else {
+                // Emote runs render as inline images inside the text. Each
+                // emote occurrence gets its own placeholder id so a message
+                // with several different emotes renders each one correctly.
+                val body = remember(message.id, message.segments) {
+                    buildAnnotatedString {
+                        message.segments.forEachIndexed { index, segment ->
+                            if (segment.emoteUrl != null) {
+                                appendInlineContent("chatEmote$index", "emote")
+                            } else {
+                                withStyle(SpanStyle(color = c.onSurface)) { append(segment.text) }
+                            }
+                        }
+                    }
+                }
+                val inline = remember(message.segments) {
+                    message.segments.mapIndexedNotNull { index, segment ->
+                        val url = segment.emoteUrl ?: return@mapIndexedNotNull null
+                        "chatEmote$index" to InlineTextContent(
+                            Placeholder(20.sp, 20.sp, PlaceholderVerticalAlign.TextCenter),
+                        ) {
+                            coil.compose.AsyncImage(
+                                model = coil.request.ImageRequest.Builder(context)
+                                    .data(url)
+                                    .crossfade(false)
+                                    .build(),
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }.toMap()
+                }
+                Text(body, inlineContent = inline, fontSize = 13.5.sp, lineHeight = 18.sp)
+            }
         }
     }
 }

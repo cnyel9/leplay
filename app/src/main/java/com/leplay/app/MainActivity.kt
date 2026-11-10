@@ -778,6 +778,7 @@ fun LePlayTubeApp() {
                 },
                 contentPadding = PaddingValues(bottom = navBottom),
                 onCheckUpdate = { updateState.check(manual = true) },
+                updateState = updateState,
             )
         }
 

@@ -96,6 +96,7 @@ object CommentFeed {
             channelId = author?.optString("channelId")?.takeIf { it.startsWith("UC") },
             avatar = author?.optString("avatarThumbnailUrl")?.ifBlank { null }?.let { if (it.startsWith("//")) "https:$it" else it },
             text = props.optJSONObject("content")?.optString("content").orEmpty().trim(),
+            sponsor = author?.optBoolean("isSponsor") == true,
             likes = toolbar?.optString("likeCountNotliked")?.let { InnerTube.parseViews(it) }?.takeIf { it > 0 }?.toInt() ?: 0,
             ago = props.optString("publishedTime").ifBlank { null }?.let { I18n.translateTimeAgo(it) },
             pinned = vm.has("pinnedText") || props.has("pinnedText"),

@@ -163,6 +163,10 @@ internal val RELEASE_NOTES = """
     • Background playback, Picture-in-Picture, and Android TV mode.
 """.trimIndent()
 
+/** Outcome of the most recent update check, so the Settings version badge
+ *  reflects a real result instead of a static label (0.1.1, notes 40/51). */
+enum class UpdateCheckOutcome { Unknown, UpToDate, Available, Failed }
+
 /**
  * Checks the GitHub releases feed, downloads the newest APK and hands it to the system installer.
  * No server, no account: the release page is the source of truth.
@@ -186,6 +190,13 @@ class UpdateState(private val scope: CoroutineScope) {
         private set
     var message by mutableStateOf<String?>(null)
 
+    /** Result of the latest completed check; Failed keeps the last success
+     *  cached in [lastKnownLatest] for display (0.1.1, note 40d). */
+    var lastOutcome by mutableStateOf(UpdateCheckOutcome.Unknown)
+        private set
+    var lastKnownLatest by mutableStateOf<UpdateInfo?>(null)
+        private set
+
     private var downloadJob: Job? = null
 
     fun check(manual: Boolean = false) {
@@ -195,15 +206,26 @@ class UpdateState(private val scope: CoroutineScope) {
             val latest = withContext(Dispatchers.IO) { runCatching { fetchLatest() }.getOrNull() }
             checking = false
             if (latest == null) {
+                // A failed check must not clobber a known good result: the
+                // Settings badge keeps showing the cached success (note 40c/d).
+                if (lastOutcome == UpdateCheckOutcome.Unknown) lastOutcome = UpdateCheckOutcome.Failed
                 if (manual) message = I18n.t("update_check_failed", "Couldn't check for updates. Try again in a moment.")
                 return@launch
             }
+            lastKnownLatest = latest
             if (isNewer(latest.version, BuildConfig.VERSION_NAME)) {
                 info = latest
                 error = null
+                lastOutcome = UpdateCheckOutcome.Available
+                message = null
                 visible = true
-            } else if (manual) {
-                message = I18n.t("latest_version_notice", "You're on the latest version ({version}).").replace("{version}", BuildConfig.VERSION_NAME)
+            } else {
+                lastOutcome = UpdateCheckOutcome.UpToDate
+                message = if (manual) {
+                    I18n.t("latest_version_notice", "You're on the latest version ({version}).").replace("{version}", BuildConfig.VERSION_NAME)
+                } else {
+                    null
+                }
             }
         }
     }
@@ -268,18 +290,61 @@ class UpdateState(private val scope: CoroutineScope) {
     }
 
     private fun fetchLatest(): UpdateInfo? {
+        // GitHub's unauthenticated API is limited per IP and the limit is
+        // often shared (CGNAT), so a single 403/429 used to surface as a
+        // spurious "check failed" (0.1.1, note 40). Retry a few times with
+        // backoff, honouring Retry-After / X-RateLimit-Reset when present.
+        var attempt = 0
+        while (true) {
+            val result = fetchLatestOnce()
+            if (result.info != null || !result.retryable || attempt >= 2) return result.info
+            val waitMs = result.retryAfterMs ?: (1500L shl attempt)
+            runCatching { Thread.sleep(waitMs.coerceIn(500L, 60_000L)) }
+            attempt++
+        }
+    }
+
+    private data class LatestAttempt(val info: UpdateInfo?, val retryable: Boolean, val retryAfterMs: Long? = null)
+
+    private fun fetchLatestOnce(): LatestAttempt {
         val request = Request.Builder()
             .url("https://api.github.com/repos/cnyel9/leplay/releases/latest")
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "LePlay/${BuildConfig.VERSION_NAME}")
             .build()
-        Net.client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return null
-            val json = JSONObject(response.body?.string().orEmpty())
-            val tag = json.optString("tag_name").ifBlank { return null }
+        val executed = try {
+            Net.client.newCall(request).execute()
+        } catch (t: Throwable) {
+            return LatestAttempt(null, retryable = true)
+        }
+        return executed.use { response ->
+            if (!response.isSuccessful) {
+                val code = response.code
+                val retryable = code == 403 || code == 429 || code >= 500
+                var waitMs: Long? = null
+                if (retryable) {
+                    val retryAfter = response.header("Retry-After")?.toLongOrNull()
+                    val reset = response.header("X-RateLimit-Reset")?.toLongOrNull()
+                    waitMs = when {
+                        retryAfter != null -> retryAfter * 1000L
+                        reset != null -> reset * 1000L - System.currentTimeMillis()
+                        else -> null
+                    }?.coerceIn(500L, 60_000L)
+                }
+                return@use LatestAttempt(null, retryable = retryable, retryAfterMs = waitMs)
+            }
+            runCatching { parseLatest(response) }.getOrElse { LatestAttempt(null, retryable = true) }
+        }
+    }
+
+    private fun parseLatest(response: okhttp3.Response): LatestAttempt {
+        response.body?.string().orEmpty().let { raw ->
+            if (raw.isBlank()) return LatestAttempt(null, retryable = true)
+            val json = JSONObject(raw)
+            val tag = json.optString("tag_name").ifBlank { return LatestAttempt(null, retryable = false) }
             val version = tag.removePrefix("v").removePrefix("V").trim()
-            if (version.isBlank()) return null
-            val assets = json.optJSONArray("assets") ?: return null
+            if (version.isBlank()) return LatestAttempt(null, retryable = false)
+            val assets = json.optJSONArray("assets") ?: return LatestAttempt(null, retryable = false)
             var apkUrl: String? = null
             var size = 0L
             for (i in 0 until assets.length()) {
@@ -294,14 +359,17 @@ class UpdateState(private val scope: CoroutineScope) {
                 }
                 if (name.equals("LePlay.apk", ignoreCase = true)) break
             }
-            val url = apkUrl ?: return null
-            return UpdateInfo(
-                version = version,
-                tag = tag,
-                notes = json.optString("body").orEmpty(),
-                apkUrl = url,
-                sizeBytes = size,
-                htmlUrl = json.optString("html_url").orEmpty(),
+            val url = apkUrl ?: return LatestAttempt(null, retryable = false)
+            return LatestAttempt(
+                UpdateInfo(
+                    version = version,
+                    tag = tag,
+                    notes = json.optString("body").orEmpty(),
+                    apkUrl = url,
+                    sizeBytes = size,
+                    htmlUrl = json.optString("html_url").orEmpty(),
+                ),
+                retryable = false,
             )
         }
     }

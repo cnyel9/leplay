@@ -40,6 +40,10 @@ fun highResMusicThumbnail(url: String?): String? {
     return u
 }
 
+/** Layout kind of a music home shelf (0.1.1, Paket B): which renderer the
+ *  shelf came from decides how the home screen lays it out. */
+enum class MusicShelfKind { Carousel, SongList, QuickPicks, Grid }
+
 @Immutable
 data class MusicShelfItem(
     val title: String,
@@ -48,6 +52,10 @@ data class MusicShelfItem(
     val videoId: String?,
     val browseId: String?,
     val playlistId: String? = null,
+
+    /** Track duration in seconds, parsed from responsive item columns
+     *  (0.1.1, Paket B); 0 when the server did not send one. */
+    val durationSec: Long = 0L,
 ) {
     fun toVideoItem(): VideoItem? = videoId?.let { vid ->
         VideoItem(
@@ -57,7 +65,7 @@ data class MusicShelfItem(
             channelUrl = null,
             thumbnail = highResMusicThumbnail(thumbnail),
             avatar = null,
-            durationSec = 0L,
+            durationSec = durationSec,
             views = -1L,
             uploaded = "YouTube Music",
         )
@@ -69,6 +77,20 @@ data class MusicShelf(
     val title: String,
     val subtitle: String? = null,
     val items: List<MusicShelfItem>,
+    val kind: MusicShelfKind = MusicShelfKind.Carousel,
+)
+
+/** One filter chip from the music home chip cloud (0.1.1, Paket B). */
+@Immutable
+data class MusicHomeChip(val label: String, val params: String)
+
+/** Parsed music home: shelves plus the filter chips and the continuation
+ *  token for loading more shelves (0.1.1, Paket B). */
+@Immutable
+data class MusicHomePage(
+    val shelves: List<MusicShelf>,
+    val chips: List<MusicHomeChip> = emptyList(),
+    val continuation: String? = null,
 )
 
 @Immutable
@@ -83,8 +105,19 @@ data class MusicNextPage(
     val automixPlaylistId: String? = null,
 )
 
+/** True when a video renderer's ownerBadges carry a verified or official
+ *  artist badge (0.1.1, note 52). */
+internal fun ownerBadgesVerified(o: JSONObject): Boolean {
+    val badges = o.optJSONArray("ownerBadges") ?: return false
+    for (i in 0 until badges.length()) {
+        val style = badges.optJSONObject(i)?.optJSONObject("metadataBadgeRenderer")?.optString("style").orEmpty()
+        if (style.contains("VERIFIED")) return true
+    }
+    return false
+}
+
 @Immutable
-data class ChannelRef(val id: String, val name: String, val avatar: String?) {
+data class ChannelRef(val id: String, val name: String, val avatar: String?, val verified: Boolean = false) {
     val url: String get() = "https://www.youtube.com/channel/$id"
 }
 
@@ -849,9 +882,15 @@ object InnerTube {
     }
 
 
-    suspend fun musicHome(): List<MusicShelf> = withContext(Dispatchers.IO) {
-        val root = postMusic("browse", JSONObject().put("browseId", "FEmusic_home"))
-        parseMusicShelves(root)
+    suspend fun musicHome(params: String? = null): MusicHomePage = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("browseId", "FEmusic_home")
+        if (!params.isNullOrBlank()) body.put("params", params)
+        parseMusicHome(postMusic("browse", body))
+    }
+
+    /** Loads the next page of music home shelves for a continuation token. */
+    suspend fun musicHomeMore(continuation: String): MusicHomePage = withContext(Dispatchers.IO) {
+        parseMusicHome(postMusic("browse", JSONObject().put("continuation", continuation)))
     }
 
 
@@ -1758,91 +1797,206 @@ object InnerTube {
         out.values.toList()
     }
 
-    internal fun parseMusicShelves(root: JSONObject): List<MusicShelf> {
-        val out = mutableListOf<MusicShelf>()
-        val tabs = root.optJSONObject("contents")
-            ?.optJSONObject("singleColumnBrowseResultsRenderer")
-            ?.optJSONArray("tabs")
-            ?: return out
-        val sectionList = tabs.optJSONObject(0)
-            ?.optJSONObject("tabRenderer")
-            ?.optJSONObject("content")
-            ?.optJSONObject("sectionListRenderer")
-            ?.optJSONArray("contents")
-            ?: return out
+    internal fun parseMusicShelves(root: JSONObject): List<MusicShelf> = parseMusicHome(root).shelves
 
-        for (i in 0 until sectionList.length()) {
-            val section = sectionList.optJSONObject(i) ?: continue
-            val carousel = section.optJSONObject("musicCarouselShelfRenderer")
-            val plain = section.optJSONObject("musicShelfRenderer")
-            val shelfObj = carousel ?: plain ?: continue
+    /**
+     * Parses a music home (or home continuation) response into shelves with
+     * layout kinds, filter chips, and the next continuation (0.1.1, Paket B).
+     * Renderer types that used to be dropped silently (taste builder,
+     * immersive carousel, grid, multi-row, navigation buttons) are now read.
+     */
+    internal fun parseMusicHome(root: JSONObject): MusicHomePage {
+        val shelves = mutableListOf<MusicShelf>()
+        val chips = mutableListOf<MusicHomeChip>()
+        var continuation: String? = null
 
-            val headerObj = shelfObj.optJSONObject("header")?.optJSONObject("musicCarouselShelfBasicHeaderRenderer")
-                ?: shelfObj.optJSONObject("title")
-            val title = headerObj?.text("title") ?: shelfObj.text("title") ?: continue
-            val strapline = headerObj?.text("strapline")
-
-            val contentsArr = shelfObj.optJSONArray("contents") ?: continue
-            val items = mutableListOf<MusicShelfItem>()
-            for (j in 0 until contentsArr.length()) {
-                val itemObj = contentsArr.optJSONObject(j) ?: continue
-                val twoRow = itemObj.optJSONObject("musicTwoRowItemRenderer")
-                val responsive = itemObj.optJSONObject("musicResponsiveListItemRenderer")
-
-                if (twoRow != null) {
-                    val itemTitle = twoRow.text("title") ?: continue
-                    val itemSub = twoRow.text("subtitle") ?: ""
-                    val ep = twoRow.optJSONObject("navigationEndpoint")
-                    val playEp = twoRow.optJSONObject("thumbnailOverlay")
-                        ?.optJSONObject("musicItemThumbnailOverlayRenderer")
-                        ?.optJSONObject("content")
-                        ?.optJSONObject("musicPlayButtonRenderer")
-                        ?.optJSONObject("playNavigationEndpoint")
-                    val watchEp = playEp?.optJSONObject("watchEndpoint") ?: ep?.optJSONObject("watchEndpoint")
-                    val watchPlaylistEp = playEp?.optJSONObject("watchPlaylistEndpoint") ?: ep?.optJSONObject("watchPlaylistEndpoint")
-
-                    val vid = watchEp?.optString("videoId")?.takeIf { it.isNotEmpty() }
-                        ?: ep?.optJSONObject("browseEndpoint")?.optString("browseId")?.takeIf { it.startsWith("MPED") }?.removePrefix("MPED")
-                    val playlistId = watchPlaylistEp?.optString("playlistId")?.takeIf { it.isNotEmpty() }
-                        ?: watchEp?.optString("playlistId")?.takeIf { it.isNotEmpty() }
-                        ?: ep?.optJSONObject("browseEndpoint")?.optString("browseId")?.takeIf { it.startsWith("VL") }?.removePrefix("VL")
-                    val browseId = ep?.optJSONObject("browseEndpoint")?.optString("browseId")
-                        ?.takeUnless { it.startsWith("MPED") }
-                    val thumb = highResMusicThumbnail(
-                        twoRow.optJSONObject("thumbnailRenderer")
-                            ?.optJSONObject("musicThumbnailRenderer")
-                            ?.optJSONObject("thumbnail")?.thumbnails()?.lastOrNull()
-                    )
-                    items.add(MusicShelfItem(itemTitle, itemSub, thumb, vid, browseId, playlistId))
-                } else if (responsive != null) {
-                    val playEp = responsive.optJSONObject("overlay")
-                        ?.optJSONObject("musicItemThumbnailOverlayRenderer")
-                        ?.optJSONObject("content")
-                        ?.optJSONObject("musicPlayButtonRenderer")
-                        ?.optJSONObject("playNavigationEndpoint")
-                    val vid = responsive.optJSONObject("playlistItemData")?.optString("videoId")
-                        ?: playEp?.optJSONObject("watchEndpoint")?.optString("videoId")
-                    val playlistId = responsive.optJSONObject("playlistItemData")?.optString("playlistId")
-                        ?: playEp?.optJSONObject("watchEndpoint")?.optString("playlistId")
-                        ?: playEp?.optJSONObject("watchPlaylistEndpoint")?.optString("playlistId")
-                    val flexCols = responsive.optJSONArray("flexColumns")
-                    val col0 = flexCols?.optJSONObject(0)?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
-                    val col1 = flexCols?.optJSONObject(1)?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")
-                    val itemTitle = col0?.text("text") ?: continue
-                    val itemSub = col1?.text("text") ?: ""
-                    val thumb = highResMusicThumbnail(
-                        responsive.optJSONObject("thumbnail")
-                            ?.optJSONObject("musicThumbnailRenderer")
-                            ?.optJSONObject("thumbnail")?.thumbnails()?.lastOrNull()
-                    )
-                    items.add(MusicShelfItem(itemTitle, itemSub, thumb, vid, null, playlistId))
+        fun addResponsiveItem(responsive: JSONObject, items: MutableList<MusicShelfItem>) {
+            val playEp = responsive.optJSONObject("overlay")
+                ?.optJSONObject("musicItemThumbnailOverlayRenderer")
+                ?.optJSONObject("content")
+                ?.optJSONObject("musicPlayButtonRenderer")
+                ?.optJSONObject("playNavigationEndpoint")
+            val vid = responsive.optJSONObject("playlistItemData")?.optString("videoId")?.takeIf { it.isNotBlank() }
+                ?: playEp?.optJSONObject("watchEndpoint")?.optString("videoId")?.takeIf { it.isNotBlank() }
+                ?: responsive.optJSONObject("navigationEndpoint")?.optJSONObject("watchEndpoint")?.optString("videoId")?.takeIf { it.isNotBlank() }
+            val playlistId = responsive.optJSONObject("playlistItemData")?.optString("playlistId")?.takeIf { it.isNotBlank() }
+                ?: playEp?.optJSONObject("watchEndpoint")?.optString("playlistId")?.takeIf { it.isNotBlank() }
+                ?: playEp?.optJSONObject("watchPlaylistEndpoint")?.optString("playlistId")?.takeIf { it.isNotBlank() }
+            val browseId = responsive.optJSONObject("navigationEndpoint")?.optJSONObject("browseEndpoint")
+                ?.optString("browseId")?.takeIf { it.isNotBlank() && !it.startsWith("MPED") }
+            val flexCols = responsive.optJSONArray("flexColumns")
+            fun flexText(index: Int): String? =
+                flexCols?.optJSONObject(index)?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")?.text("text")
+            val itemTitle = flexText(0) ?: return
+            val itemSub = flexText(1) ?: ""
+            var durationSec = 0L
+            if (flexCols != null) {
+                for (ci in 0 until flexCols.length()) {
+                    val candidate = flexText(ci)?.trim().orEmpty()
+                    if (candidate.matches(Regex("^\\d{1,2}:\\d{2}(:\\d{2})?$")) && durationSec == 0L) {
+                        durationSec = parseDuration(candidate)
+                    }
                 }
             }
-            if (items.isNotEmpty()) {
-                out.add(MusicShelf(title, strapline, items))
+            val fixedDuration = responsive.optJSONArray("fixedColumns")
+                ?.let { cols ->
+                    (0 until cols.length()).firstNotNullOfOrNull { fi ->
+                        cols.optJSONObject(fi)?.optJSONObject("musicResponsiveListItemFixedColumnRenderer")
+                            ?.text("text")?.trim()
+                            ?.takeIf { it.matches(Regex("^\\d{1,2}:\\d{2}(:\\d{2})?$")) }
+                            ?.let { parseDuration(it) }
+                    }
+                }
+            if (fixedDuration != null && fixedDuration > 0) durationSec = fixedDuration
+            val thumb = highResMusicThumbnail(
+                responsive.optJSONObject("thumbnail")
+                    ?.optJSONObject("musicThumbnailRenderer")
+                    ?.optJSONObject("thumbnail")?.thumbnails()?.lastOrNull()
+            )
+            items.add(MusicShelfItem(itemTitle, itemSub, thumb, vid, browseId, playlistId, durationSec))
+        }
+
+        fun addTwoRowItem(twoRow: JSONObject, items: MutableList<MusicShelfItem>) {
+            val itemTitle = twoRow.text("title") ?: return
+            val itemSub = twoRow.text("subtitle") ?: ""
+            val ep = twoRow.optJSONObject("navigationEndpoint")
+            val playEp = twoRow.optJSONObject("thumbnailOverlay")
+                ?.optJSONObject("musicItemThumbnailOverlayRenderer")
+                ?.optJSONObject("content")
+                ?.optJSONObject("musicPlayButtonRenderer")
+                ?.optJSONObject("playNavigationEndpoint")
+            val watchEp = playEp?.optJSONObject("watchEndpoint") ?: ep?.optJSONObject("watchEndpoint")
+            val watchPlaylistEp = playEp?.optJSONObject("watchPlaylistEndpoint") ?: ep?.optJSONObject("watchPlaylistEndpoint")
+            val vid = watchEp?.optString("videoId")?.takeIf { it.isNotEmpty() }
+                ?: ep?.optJSONObject("browseEndpoint")?.optString("browseId")?.takeIf { it.startsWith("MPED") }?.removePrefix("MPED")
+            val playlistId = watchPlaylistEp?.optString("playlistId")?.takeIf { it.isNotEmpty() }
+                ?: watchEp?.optString("playlistId")?.takeIf { it.isNotEmpty() }
+                ?: ep?.optJSONObject("browseEndpoint")?.optString("browseId")?.takeIf { it.startsWith("VL") }?.removePrefix("VL")
+            val browseId = ep?.optJSONObject("browseEndpoint")?.optString("browseId")
+                ?.takeUnless { it.startsWith("MPED") }
+            val thumb = highResMusicThumbnail(
+                twoRow.optJSONObject("thumbnailRenderer")
+                    ?.optJSONObject("musicThumbnailRenderer")
+                    ?.optJSONObject("thumbnail")?.thumbnails()?.lastOrNull()
+            )
+            items.add(MusicShelfItem(itemTitle, itemSub, thumb, vid, browseId, playlistId))
+        }
+
+        fun parseShelfItems(contentsArr: JSONArray?, items: MutableList<MusicShelfItem>) {
+            if (contentsArr == null) return
+            for (j in 0 until contentsArr.length()) {
+                val itemObj = contentsArr.optJSONObject(j) ?: continue
+                when {
+                    itemObj.has("musicTwoRowItemRenderer") -> addTwoRowItem(itemObj.getJSONObject("musicTwoRowItemRenderer"), items)
+                    itemObj.has("musicResponsiveListItemRenderer") -> addResponsiveItem(itemObj.getJSONObject("musicResponsiveListItemRenderer"), items)
+                    itemObj.has("musicMultiRowItemRenderer") -> {
+                        val multi = itemObj.getJSONObject("musicMultiRowItemRenderer")
+                        val itemTitle = multi.text("title") ?: continue
+                        val itemSub = multi.text("subtitle") ?: ""
+                        val ep = multi.optJSONObject("navigationEndpoint")
+                        val vid = ep?.optJSONObject("watchEndpoint")?.optString("videoId")?.takeIf { it.isNotBlank() }
+                        val playlistId = ep?.optJSONObject("watchPlaylistEndpoint")?.optString("playlistId")?.takeIf { it.isNotBlank() }
+                            ?: ep?.optJSONObject("watchEndpoint")?.optString("playlistId")?.takeIf { it.isNotBlank() }
+                        val browseId = ep?.optJSONObject("browseEndpoint")?.optString("browseId")?.takeIf { it.isNotBlank() }
+                        val thumb = highResMusicThumbnail(
+                            multi.optJSONObject("thumbnailRenderer")
+                                ?.optJSONObject("musicThumbnailRenderer")
+                                ?.optJSONObject("thumbnail")?.thumbnails()?.lastOrNull()
+                        )
+                        items.add(MusicShelfItem(itemTitle, itemSub, thumb, vid, browseId, playlistId))
+                    }
+                }
             }
         }
-        return out
+
+        fun parseSection(section: JSONObject) {
+            section.optJSONObject("chipCloudRenderer")?.optJSONArray("chips")?.let { arr ->
+                for (i in 0 until arr.length()) {
+                    val chip = arr.optJSONObject(i)?.optJSONObject("chipCloudChipRenderer") ?: continue
+                    val label = chip.text("text")?.trim()?.ifBlank { null } ?: continue
+                    val params = chip.optJSONObject("navigationEndpoint")?.optJSONObject("browseEndpoint")
+                        ?.optString("params")?.ifBlank { null } ?: continue
+                    if (chips.none { it.params == params }) chips.add(MusicHomeChip(label, params))
+                }
+            }
+            val carousel = section.optJSONObject("musicCarouselShelfRenderer")
+            val plain = section.optJSONObject("musicShelfRenderer")
+            val taste = section.optJSONObject("musicTasteBuilderShelfRenderer")
+            val grid = section.optJSONObject("gridRenderer")
+            val shelfObj = carousel ?: plain ?: taste ?: grid
+            if (shelfObj != null) {
+                val headerObj = shelfObj.optJSONObject("header")?.optJSONObject("musicCarouselShelfBasicHeaderRenderer")
+                    ?: shelfObj.optJSONObject("title")
+                val title = headerObj?.text("title") ?: shelfObj.text("title")
+                val strapline = headerObj?.text("strapline")
+                val items = mutableListOf<MusicShelfItem>()
+                parseShelfItems(shelfObj.optJSONArray("contents") ?: shelfObj.optJSONArray("items"), items)
+                if (items.isNotEmpty() && title != null) {
+                    val kind = when {
+                        grid != null -> MusicShelfKind.Grid
+                        items.all { it.videoId != null } && items.any { it.durationSec > 0 } -> MusicShelfKind.SongList
+                        title.contains("Quick picks", ignoreCase = true) ||
+                            title.contains("Pilihan cepat", ignoreCase = true) ||
+                            title.contains("Mulai dengar", ignoreCase = true) -> MusicShelfKind.QuickPicks
+                        else -> MusicShelfKind.Carousel
+                    }
+                    shelves.add(MusicShelf(title, strapline, items, kind))
+                }
+                return
+            }
+            section.optJSONObject("musicImmersiveCarouselShelfRenderer")?.let { immersive ->
+                val items = mutableListOf<MusicShelfItem>()
+                parseShelfItems(immersive.optJSONArray("contents"), items)
+                val title = immersive.optJSONObject("start")?.text("title")
+                    ?: immersive.optJSONObject("header")?.text("title")
+                    ?: "Featured"
+                if (items.isNotEmpty()) shelves.add(MusicShelf(title, null, items, MusicShelfKind.Carousel))
+                return
+            }
+            section.optJSONObject("musicNavigationButtonShelfRenderer")?.let { navShelf ->
+                // Mood / genre navigation buttons surface as a pseudo shelf
+                // of browse targets (0.1.1, Paket B sub-feature f).
+                val items = mutableListOf<MusicShelfItem>()
+                navShelf.optJSONArray("buttons")?.let { buttons ->
+                    for (b in 0 until buttons.length()) {
+                        val button = buttons.optJSONObject(b)?.optJSONObject("musicNavigationButtonRenderer") ?: continue
+                        val label = button.text("buttonText")?.trim()?.ifBlank { null } ?: continue
+                        val ep = button.optJSONObject("clickCommand")
+                            ?: button.optJSONObject("navigationEndpoint")
+                        val browseId = ep?.optJSONObject("browseEndpoint")?.optString("browseId")?.ifBlank { null }
+                        items.add(MusicShelfItem(label, "", null, null, browseId))
+                    }
+                }
+                if (items.isNotEmpty()) {
+                    shelves.add(MusicShelf(navShelf.text("title") ?: "Moods & genres", null, items, MusicShelfKind.Grid))
+                }
+                return
+            }
+        }
+
+        // Browse responses are section lists; continuation responses append
+        // sections under continuationContents instead.
+        val rawSections = mutableListOf<JSONObject>()
+        root.optJSONObject("contents")
+            ?.optJSONObject("singleColumnBrowseResultsRenderer")
+            ?.optJSONArray("tabs")?.optJSONObject(0)
+            ?.optJSONObject("tabRenderer")?.optJSONObject("content")
+            ?.optJSONObject("sectionListRenderer")?.optJSONArray("contents")
+            ?.let { arr -> for (i in 0 until arr.length()) arr.optJSONObject(i)?.let(rawSections::add) }
+        root.optJSONObject("continuationContents")
+            ?.optJSONObject("sectionListContinuation")?.optJSONArray("contents")
+            ?.let { arr -> for (i in 0 until arr.length()) arr.optJSONObject(i)?.let(rawSections::add) }
+        for (section in rawSections) parseSection(section)
+
+        root.walk { key, obj ->
+            if (continuation == null && (key == "continuationItemRenderer" || key == "continuationItemViewModel")) {
+                continuation = obj.collectStrings("token").firstOrNull()
+            }
+            if (key == "nextContinuationData" || key == "continuationEndpoint") {
+                if (continuation == null) continuation = obj.optString("continuation").ifBlank { null }
+            }
+        }
+        return MusicHomePage(shelves, chips, continuation)
     }
 
 
@@ -2385,6 +2539,7 @@ object InnerTube {
             views = parseViews(o.text("viewCountText") ?: o.text("shortViewCountText") ?: infoRuns.firstOrNull { it.contains("view") || it.contains("watching") }),
             uploaded = if (isLive) I18n.t("live_now", "Live") else (o.text("publishedTimeText") ?: infoRuns.firstOrNull { it.contains("ago") || it.contains("पहले") || it.contains("hace") || it.contains("назад") } ?: infoRuns.lastOrNull())?.let { I18n.translateTimeAgo(it) },
             isLive = isLive,
+            verified = ownerBadgesVerified(o),
         )
     }
 

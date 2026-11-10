@@ -153,6 +153,7 @@ fun SettingsScreen(
     onAccountSwitched: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(0.dp),
     onCheckUpdate: () -> Unit = {},
+    updateState: UpdateState? = null,
 ) {
     val c = MaterialTheme.colorScheme
     val context = LocalContext.current
@@ -280,10 +281,19 @@ fun SettingsScreen(
                         subtitle = "LePlay ${BuildConfig.VERSION_NAME}",
                         padded = false,
                         trailing = {
+                            // The badge reflects the latest real check
+                            // outcome (0.1.1, notes 40/51): amber when a
+                            // newer release is known, green when the last
+                            // check confirmed this build is current, plain
+                            // version text before any check has completed.
+                            val outcome = updateState?.lastOutcome ?: UpdateCheckOutcome.Unknown
+                            val available = outcome == UpdateCheckOutcome.Available
+                            val bg = if (available) Color(0xFF2A2113) else Color(0xFF132818)
+                            val fg = if (available) Color(0xFFF5A623) else Color(0xFF2ECC71)
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF132818))
+                                    .background(bg)
                                     .padding(horizontal = 10.dp, vertical = 5.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
@@ -292,12 +302,16 @@ fun SettingsScreen(
                                         modifier = Modifier
                                             .size(6.dp)
                                             .clip(CircleShape)
-                                            .background(Color(0xFF2ECC71))
+                                            .background(fg)
                                     )
                                     Spacer(Modifier.width(5.dp))
                                     Text(
-                                        text = I18n.t("up_to_date", "Up to date"),
-                                        color = Color(0xFF2ECC71),
+                                        text = when (outcome) {
+                                            UpdateCheckOutcome.Available -> I18n.t("update_available_badge", "Update available")
+                                            UpdateCheckOutcome.UpToDate -> I18n.t("up_to_date", "Up to date")
+                                            else -> BuildConfig.VERSION_NAME
+                                        },
+                                        color = fg,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 11.sp,
                                     )
@@ -323,10 +337,30 @@ fun SettingsScreen(
                             scope.launch {
                                 val start = System.currentTimeMillis()
                                 onCheckUpdate()
-                                val elapsed = System.currentTimeMillis() - start
-                                if (elapsed < 1200) delay(1200 - elapsed)
-                                checkingUpdate = false
-                                updateFeedback = I18n.t("latest_version_notice", "You're on the latest version ({version}).").replace("{version}", BuildConfig.VERSION_NAME)
+                                val state = updateState
+                                if (state != null) {
+                                    // Report what the check actually found
+                                    // instead of always claiming "latest"
+                                    // (0.1.1, note 40c): wait for the
+                                    // in-flight check, then mirror its
+                                    // outcome. An available update opens
+                                    // the download dialog itself, so no
+                                    // feedback card is shown for it.
+                                    while (state.checking) delay(150)
+                                    val elapsed = System.currentTimeMillis() - start
+                                    if (elapsed < 1200) delay(1200 - elapsed)
+                                    checkingUpdate = false
+                                    updateFeedback = when (state.lastOutcome) {
+                                        UpdateCheckOutcome.UpToDate -> I18n.t("latest_version_notice", "You're on the latest version ({version}).").replace("{version}", BuildConfig.VERSION_NAME)
+                                        UpdateCheckOutcome.Available -> null
+                                        else -> I18n.t("update_check_failed", "Couldn't check for updates. Try again in a moment.")
+                                    }
+                                } else {
+                                    val elapsed = System.currentTimeMillis() - start
+                                    if (elapsed < 1200) delay(1200 - elapsed)
+                                    checkingUpdate = false
+                                    updateFeedback = I18n.t("latest_version_notice", "You're on the latest version ({version}).").replace("{version}", BuildConfig.VERSION_NAME)
+                                }
                             }
                         },
                         padded = false,
@@ -363,6 +397,7 @@ fun SettingsScreen(
                         title = I18n.t("support_developer", "Support Developer"),
                         subtitle = I18n.t("support_developer_sub", "Buy the developer a coffee"),
                         onClick = { activeFloatingSection = SettingsFloatingSection.SUPPORT },
+                        padded = false,
                     )
                 }
             }
@@ -733,6 +768,9 @@ private fun SettingsRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // A guaranteed minimum height keeps every Settings row the same
+            // height regardless of its trailing content (0.1.1, note 50).
+            .heightIn(min = 62.dp)
             .then(if (onClick != null) Modifier.pressable(onClick = onClick) else Modifier)
             .then(if (padded) Modifier.padding(horizontal = 14.dp, vertical = 11.dp) else Modifier.padding(vertical = 11.dp)),
         verticalAlignment = Alignment.CenterVertically,

@@ -352,6 +352,11 @@ class PlayerState(private val scope: CoroutineScope) {
 
     private var pendingStart: VideoItem? = null
 
+    /** Exact position captured by retry() (0.1.1, note 43). Consumed by
+     *  startPlayback so a manual retry resumes where the stream died
+     *  instead of the persisted resume point. */
+    private var pendingRetryPositionMs: Long? = null
+
 
 
 
@@ -762,7 +767,9 @@ class PlayerState(private val scope: CoroutineScope) {
     private fun startPlayback(item: VideoItem) {
         val player = controller ?: run { pendingStart = item; return }
 
-        replaceCurrent(player, item, positionMs = ResumeStore.startPosition(item.id))
+        val retryAt = pendingRetryPositionMs
+        pendingRetryPositionMs = null
+        replaceCurrent(player, item, positionMs = retryAt ?: ResumeStore.startPosition(item.id))
         player.play()
         if (selectedSubtitleLanguage != null) setSubtitleLanguage(selectedSubtitleLanguage)
         refreshTracks()
@@ -1369,7 +1376,17 @@ class PlayerState(private val scope: CoroutineScope) {
     }
 
 
-    fun retry() = current?.let { item -> StreamCache.invalidate(item.id); current = null; open(item) }
+    fun retry() {
+        val item = current ?: return
+        // Resume from the exact live position instead of the persisted
+        // resume point (0.1.1, note 43): capture it before open() resets
+        // the item, restore it once the fresh playback is ready.
+        val atMs = positionMs
+        StreamCache.invalidate(item.id)
+        pendingRetryPositionMs = if (atMs > 5_000L) atMs else null
+        current = null
+        open(item)
+    }
 
     fun togglePlay() {
         val player = controller ?: return

@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -64,7 +65,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
@@ -651,6 +658,53 @@ private fun statCompact(v: Double, suffix: String): String {
         else -> "%.2f".format(v)
     }.trimEnd('0').trimEnd('.')
     return text + suffix
+}
+
+private val TEXT_LINK_REGEX = Regex("""https?://[^\s<>"']+|www\.[^\s<>"']+""")
+private val LINK_TRAILING_CHARS = ".,;:!?)]}，。\"'"
+
+/**
+ * Renders plain text with http(s) and www. URLs as tappable links that
+ * open in the browser (0.1.1, note 42). Used for video descriptions and
+ * comment bodies, whose data models keep only the raw text.
+ */
+@Composable
+fun LinkifiedText(
+    text: String,
+    color: Color = Color.Unspecified,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    fontWeight: FontWeight? = null,
+    lineHeight: TextUnit = TextUnit.Unspecified,
+    modifier: Modifier = Modifier,
+) {
+    val c = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    val annotated = remember(text, c.primary) {
+        buildAnnotatedString {
+            var cursor = 0
+            for (match in TEXT_LINK_REGEX.findAll(text)) {
+                var end = match.range.last + 1
+                while (end > match.range.first && text[end - 1] in LINK_TRAILING_CHARS) end--
+                if (end <= match.range.first) continue
+                if (match.range.first > cursor) append(text.substring(cursor, match.range.first))
+                val raw = text.substring(match.range.first, end)
+                val url = if (raw.startsWith("http", ignoreCase = true)) raw else "https://$raw"
+                withLink(LinkAnnotation.Url(url, styles = TextLinkStyles(style = SpanStyle(color = c.primary)))) {
+                    append(raw)
+                }
+                cursor = end
+            }
+            if (cursor < text.length) append(text.substring(cursor))
+        }
+    }
+    // BasicText resolves LinkAnnotation.Url clicks through the platform
+    // URI handler, which opens the browser; plain text stays selectable
+    // when wrapped in a SelectionContainer by the caller.
+    BasicText(
+        text = annotated,
+        style = TextStyle(color = color, fontSize = fontSize, fontWeight = fontWeight, lineHeight = lineHeight),
+        modifier = modifier,
+    )
 }
 
 fun metaLine(channel: String, views: Long, uploaded: String?, isLive: Boolean = false): String =

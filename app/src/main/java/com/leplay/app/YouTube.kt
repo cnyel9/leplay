@@ -59,6 +59,11 @@ data class VideoItem(
 
     val localUri: String? = null,
     val isLive: Boolean = false,
+
+    /** Uploader verified flag (0.1.1, note 52): parsed from InnerTube
+     *  ownerBadges where available; false elsewhere is "unknown", the UI
+     *  only renders the badge when true. */
+    val verified: Boolean = false,
 )
 
 
@@ -97,6 +102,9 @@ data class VideoDetails(
     val likes: Long,
     val dislikes: Long = -1L,
     val subscribers: Long,
+
+    /** Uploader verified flag for the watch page channel row (0.1.1, note 52). */
+    val verified: Boolean = false,
     val related: List<VideoItem>,
     val playable: Boolean,
 
@@ -287,6 +295,7 @@ object YouTube {
             }.orEmpty(),
             likes = info.likeCount,
             subscribers = info.uploaderSubscriberCount,
+            verified = runCatching { info.isUploaderVerified }.getOrDefault(false),
             related = info.relatedItems.filterIsInstance<StreamInfoItem>().mapNotNull { it.toVideoItem() }.let { list ->
                 if (list.isNotEmpty()) list else fallbackRelated.first
             },
