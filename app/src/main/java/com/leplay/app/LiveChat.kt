@@ -44,6 +44,7 @@ import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.People
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -382,8 +383,14 @@ object LiveChatFeed {
 
                 "videoViewCountRenderer" -> {
                     if (viewers == null) {
+                        // Keep only the leading count token ("1,234" in
+                        // "1,234 watching", "150" in "150 menonton"); the
+                        // old cleanup leaked letters from localized words
+                        // (0.1.1-test2, note 45 follow-up).
                         val raw = obj.text("viewCount")
-                        viewers = raw?.replace(Regex("[^0-9.,KMBkmb]"), "")?.trim()?.ifBlank { null }
+                        viewers = raw?.let {
+                            Regex("^\\s*([0-9][0-9.,]*\\s*[KMBkmb]?)").find(it)?.groupValues?.get(1)?.trim()?.ifBlank { null }
+                        }
                     }
                 }
 
@@ -1153,6 +1160,17 @@ private fun LiveChatRow(message: LiveChatMessage) {
                             .build(),
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
+                    )
+                }
+                if (message.isModerator) {
+                    // Moderators carry a gear marker next to the name
+                    // (0.1.1-test2, note 46 follow-up).
+                    Spacer(Modifier.width(5.dp))
+                    Icon(
+                        Icons.Rounded.Settings,
+                        contentDescription = null,
+                        tint = Color(0xFF5E84F1),
+                        modifier = Modifier.size(13.dp),
                     )
                 }
             }

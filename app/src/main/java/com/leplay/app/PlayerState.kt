@@ -685,6 +685,23 @@ class PlayerState(private val scope: CoroutineScope) {
                 .onSuccess { d ->
                     Log.i("LePlayTime", "details +${android.os.SystemClock.elapsedRealtime() - openedAt}ms")
                     details = d
+                    // NewPipe's uploader subscriber count can arrive
+                    // truncated to its abbreviated figure (12 instead of
+                    // 12 jt); the channel header parse carries the full
+                    // count and the verified flag, so supplement from it
+                    // (0.1.1-test2, notes 41/52).
+                    val headerChannelId = d.item.channelId()
+                    if (headerChannelId != null) {
+                        scope.launch {
+                            val meta = InnerTube.channelHeaderMeta(headerChannelId) ?: return@launch
+                            val cur = details ?: return@launch
+                            if (cur.item.id != d.item.id) return@launch
+                            details = cur.copy(
+                                subscribers = if (meta.subscribers > cur.subscribers) meta.subscribers else cur.subscribers,
+                                verified = cur.verified || meta.verified,
+                            )
+                        }
+                    }
                     val collapsedRelated = diversifyRelated(d.related, item)
                     displayRelated = interleaveFeed(collapsedRelated, item)
                     // Seed the cross-page dedupe with page 1 so later

@@ -2147,6 +2147,20 @@ object InnerTube {
         return@coroutineScope FeedPage(fallbackVideos, "anon_feed:$nextIdx:start")
     }
 
+    /**
+     * Channel header meta (full subscriber count, verified) for a channel
+     * id, from the same browse response the channel page uses. The watch
+     * page supplements its NewPipe details with this, because the NewPipe
+     * uploader subscriber count can come back truncated to its abbreviated
+     * figure (0.1.1-test2, note 41 follow-up).
+     */
+    suspend fun channelHeaderMeta(channelId: String): ChannelHeaderMeta? = withContext(Dispatchers.IO) {
+        runCatching {
+            val root = postAny("browse", JSONObject().put("browseId", channelId))
+            parseChannelHeader(root)
+        }.getOrNull()
+    }
+
     suspend fun channelVideos(channelId: String, continuation: String? = null, sortToken: String? = null): FeedPage = withContext(Dispatchers.IO) {
         val body = when {
             continuation != null -> JSONObject().put("continuation", continuation)
@@ -2795,7 +2809,11 @@ object InnerTube {
         }
         val subscribers = parseViews(subsText)
         val videoCount = parseViews(videosText)
-        val verified = root.optJSONObject("header")?.let { parseChannelVerified(it) } ?: false
+        // Verified badges can sit anywhere in the response on the modern
+        // header (page header view model, channel header renderers), not
+        // only under a top-level "header" object, so scan the whole tree
+        // (0.1.1-test2, note 52 follow-up).
+        val verified = parseChannelVerified(root)
         if (handle == null && subscribers < 0 && videoCount < 0 && !verified) return null
         return ChannelHeaderMeta(handle, subscribers.coerceAtLeast(0), videoCount.coerceAtLeast(-1), verified)
     }
@@ -2812,6 +2830,16 @@ object InnerTube {
         headerRoot.walk { key, obj ->
             if (found) return@walk
             if (key == "metadataBadgeRenderer" && isVerifiedChannelBadge(obj.optString("style"))) found = true
+            // Newer responses carry the badge style on the badge object
+            // itself, or as a plain style string under a badges array.
+            if (isVerifiedChannelBadge(obj.optString("style"))) found = true
+            val accLabel = obj.optJSONObject("accessibilityData")?.optString("label")
+                ?: obj.optJSONObject("accessibility")?.optString("label")
+            if (accLabel != null && VERIFIED_CHANNEL_LABEL.containsMatchIn(accLabel) &&
+                (key.contains("badge", ignoreCase = true) || key.contains("title", ignoreCase = true))
+            ) {
+                found = true
+            }
         }
         return found
     }
