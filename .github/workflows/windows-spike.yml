@@ -17,11 +17,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build Spike
-        run: cargo build --release --manifest-path windows/Cargo.toml
+        run: cargo build --release --locked --manifest-path windows/Cargo.toml
 
       - name: Bundle mpv
         shell: pwsh
         run: |
+          $ProgressPreference = 'SilentlyContinue'
           Invoke-WebRequest -Uri "https://github.com/mpv-player/mpv/releases/download/v0.42.0/mpv-v0.42.0-x86_64-pc-windows-msvc.zip" -OutFile mpv.zip
           Expand-Archive mpv.zip -DestinationPath mpvdir
           $mpv = Get-ChildItem -Recurse mpvdir -Filter mpv.exe | Select-Object -First 1
@@ -29,7 +30,10 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item windows/target/release/LePlayWindows.exe dist/
           Copy-Item $mpv.FullName dist/mpv.exe
-          Get-ChildItem $mpv.DirectoryName -Filter *.dll | Copy-Item -Destination dist/ -ErrorAction SilentlyContinue
+          Get-ChildItem $mpv.DirectoryName -Filter *.dll | Copy-Item -Destination dist/
+          if (-not (Test-Path dist/LePlayWindows.exe)) { throw "LePlayWindows.exe hilang dari dist" }
+          if (-not (Test-Path dist/mpv.exe)) { throw "mpv.exe hilang dari dist" }
+          if (-not (Test-Path dist/vulkan-1.dll)) { throw "vulkan-1.dll hilang dari dist" }
           Get-ChildItem dist | Format-Table Name, Length
 
       - name: Upload Artifact
