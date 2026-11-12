@@ -1,0 +1,39 @@
+name: Windows Spike
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Spike
+        run: cargo build --release --manifest-path windows/Cargo.toml
+
+      - name: Bundle mpv
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/mpv-player/mpv/releases/download/v0.42.0/mpv-v0.42.0-x86_64-pc-windows-msvc.zip" -OutFile mpv.zip
+          Expand-Archive mpv.zip -DestinationPath mpvdir
+          $mpv = Get-ChildItem -Recurse mpvdir -Filter mpv.exe | Select-Object -First 1
+          if (-not $mpv) { throw "mpv.exe tidak ditemukan di zip" }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item windows/target/release/LePlayWindows.exe dist/
+          Copy-Item $mpv.FullName dist/mpv.exe
+          Get-ChildItem $mpv.DirectoryName -Filter *.dll | Copy-Item -Destination dist/ -ErrorAction SilentlyContinue
+          Get-ChildItem dist | Format-Table Name, Length
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LePlayWindows-Spike
+          path: dist/
