@@ -264,6 +264,11 @@ fun LePlayTubeApp() {
     val scope = rememberCoroutineScope()
     val search = remember { SearchState(scope) }
     val lib = remember { LibraryData(scope) }
+    // Note 53 item 4: Music and Shorts feed states live at app level like
+    // LibraryData, so leaving and returning to their tabs no longer
+    // destroys them and refetches everything from zero.
+    val musicFeed = remember { MusicFeedState(scope) }
+    val shortsFeed = remember { ShortsFeedState(scope, null) }
     // Snapshot bridge for the player's displayed related list (FYP mix).
     HomeFeedHooks.provider = { lib.home.videos }
     var signingIn by remember { mutableStateOf(false) }
@@ -613,7 +618,7 @@ fun LePlayTubeApp() {
                     scrollToTop = scrollToTop[Tab.Home] ?: 0,
                 )
                 Tab.Music -> MusicScreen(
-                    lib, contentPadding, onOpen = player::openMusic, onSearch = { openSearch = true },
+                    lib, contentPadding, musicFeed, onOpen = player::openMusic, onSearch = { openSearch = true },
                     onAccount = { openSettings = true },
                     onPlayNext = player::playNextMusic,
                     onStartRadio = player::startRadio,
@@ -631,6 +636,7 @@ fun LePlayTubeApp() {
                     onBack = { tab = Tab.Home },
                     onSignIn = { signingIn = true },
                     onSearch = { openSearch = true },
+                    sharedFeed = shortsFeed,
                     bottomInset = navTop + 12.dp,
                     active = openChannel == null && !openSearch && !openSettings,
                     onOpenChannel = { url ->
@@ -931,6 +937,13 @@ fun LePlayTubeApp() {
         val currentIsLive = currentItem != null &&
             (player.details?.item?.isLive == true || currentItem.isLive)
         LaunchedEffect(player.sheet, currentItem?.id, currentIsLive) {
+            if (currentItem != null && player.sheet == PlayerSheet.Comments && !currentIsLive &&
+                currentItem.localUri == null
+            ) {
+                // Lazy chat-replay probe (note 53 item 8); prepare() is
+                // idempotent per video id.
+                player.chatReplay.prepare(currentItem.id)
+            }
             if (currentItem != null && player.sheet == PlayerSheet.Comments && currentIsLive) {
                 val channelHint = player.details?.item?.channelUrl?.substringAfterLast('/')?.takeIf { it.startsWith("UC") }
                     ?: player.accountState?.channelId

@@ -25,17 +25,21 @@ data class Profile(val name: String, val handle: String?, val avatar: String?)
 
 data class PlaylistRef(val id: String, val title: String, val thumbnail: String?, val subtitle: String?)
 
-fun highResMusicThumbnail(url: String?): String? {
+fun highResMusicThumbnail(url: String?, edge: Int = 800): String? {
     if (url.isNullOrBlank()) return null
     var u = url
     if (u.contains("googleusercontent.com")) {
-        u = u.replace(Regex("=w\\d+-h\\d+[^&?]*"), "=w800-h800-l90-rj")
-             .replace(Regex("=s\\d+[^&?]*"), "=s800-c")
+        u = u.replace(Regex("=w\\d+-h\\d+[^&?]*"), "=w$edge-h$edge-l90-rj")
+             .replace(Regex("=s\\d+[^&?]*"), "=s$edge-c")
     } else if (u.contains("ytimg.com/vi/")) {
-        u = u.replace("/default.jpg", "/maxresdefault.jpg")
-             .replace("/mqdefault.jpg", "/maxresdefault.jpg")
-             .replace("/hqdefault.jpg", "/maxresdefault.jpg")
-             .replace("/sddefault.jpg", "/maxresdefault.jpg")
+        // Note 53 item 7: small display slots do not need the 1280px
+        // rendition; hqdefault (480px) is already oversized for a row.
+        val target = if (edge <= 480) "hqdefault.jpg" else "maxresdefault.jpg"
+        u = u.replace("/default.jpg", "/$target")
+             .replace("/mqdefault.jpg", "/$target")
+             .replace("/hqdefault.jpg", "/$target")
+             .replace("/sddefault.jpg", "/$target")
+             .replace("/maxresdefault.jpg", "/$target")
     }
     return u
 }
@@ -820,7 +824,7 @@ object InnerTube {
             .header("X-Youtube-Client-Version", Account.clientVersion())
             .apply { Account.visitorData()?.let { header("X-Goog-Visitor-Id", it) } }
             .build()
-        Net.client.newCall(request).execute().use { r ->
+        Net.apiClient.newCall(request).execute().use { r ->
             if (auth != null) Account.absorbSetCookies(r.headers("Set-Cookie"))
             val text = r.body?.string().orEmpty()
             if (r.code == 401 || r.code == 403) throw IOException("YouTube rejected the session (${r.code}). Try signing in again.")
@@ -873,7 +877,7 @@ object InnerTube {
             reqBuilder.header("Authorization", auth)
         }
 
-        Net.client.newCall(reqBuilder.build()).execute().use { r ->
+        Net.apiClient.newCall(reqBuilder.build()).execute().use { r ->
             if (auth != null) Account.absorbSetCookies(r.headers("Set-Cookie"))
             val text = r.body?.string().orEmpty()
             if (!r.isSuccessful) throw IOException("YouTube Music returned ${r.code}")

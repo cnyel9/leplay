@@ -350,6 +350,12 @@ class PlayerState(private val scope: CoroutineScope) {
 
     private var loadJob: Job? = null
 
+    /** Id whose playback was already started from the stream resolve alone
+     *  (0.1.2, note 53 item 1): playback no longer waits for the full
+     *  details document, so the details completion must not start it twice
+     *  and a metadata failure must not error over a playing video. */
+    private var playbackBegunFor: String? = null
+
     private var pendingStart: VideoItem? = null
 
     /** Exact position captured by retry() (0.1.1, note 43). Consumed by
@@ -614,6 +620,7 @@ class PlayerState(private val scope: CoroutineScope) {
         }
         historyNavInProgress = false
         currentShownAsMusic = isMusicMode
+        playbackBegunFor = null
         current = item
         portraitTall = false
         if (isMusicMode) {
@@ -644,7 +651,11 @@ class PlayerState(private val scope: CoroutineScope) {
         comments.clearFor(item.id)
         liveChat.stop()
         chatReplay.reset()
-        if (!item.isLive && item.localUri == null) chatReplay.prepare(item.id)
+        // Note 53 item 8: the chat-replay probe no longer runs on every
+        // video open (it downloaded a full next page, often the whole
+        // watch page HTML, for a feature almost no video has). It now
+        // probes lazily when the user opens the Comments sheet; see
+        // MainActivity's sheet effect.
         accountState = null
         inWatchLater = false
         audioOptions = emptyList()
@@ -677,6 +688,22 @@ class PlayerState(private val scope: CoroutineScope) {
                 runCatching { InnerTube.videoState(item.id) }
                     .onSuccess { if (current?.id == item.id) { accountState = it; originalLike = it.like } }
                     .onFailure { Log.w(TAG, "account state for ${item.id}", it) }
+            }
+        }
+        if (startPlayback) {
+            // Note 53 item 1: start playback as soon as the stream resolve
+            // lands; the details document (title, related, comments) keeps
+            // loading in parallel and publishes when ready. The resolve is
+            // the same StreamCache task details() awaits, so this adds no
+            // extra network work, it only stops gating sound on metadata.
+            scope.launch {
+                val resolved = withContext(Dispatchers.IO) {
+                    runCatching { StreamCache.getOrLoad(item.id) }.isSuccess
+                }
+                if (resolved && current?.id == item.id && playbackBegunFor != item.id) {
+                    playbackBegunFor = item.id
+                    startPlayback(item)
+                }
             }
         }
         loadJob?.cancel()
@@ -735,7 +762,10 @@ class PlayerState(private val scope: CoroutineScope) {
                     known[item.id] = d.item
                     d.related.forEach { known[it.id] = it }
                     if (!d.playable) error = I18n.t("no_playable_stream", "No playable stream was found for this video.")
-                    else if (startPlayback) startPlayback(d.item)
+                    else if (startPlayback && playbackBegunFor != item.id) {
+                        playbackBegunFor = item.id
+                        startPlayback(d.item)
+                    }
 
                     scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                         val dislikes = fetchDislikeCount(item.id)
@@ -746,7 +776,12 @@ class PlayerState(private val scope: CoroutineScope) {
                 }
                 .onFailure {
                     Log.w(TAG, "details failed for ${item.id}", it)
-                    error = YouTube.friendlyError(it)
+                    // When playback already began from the resolve alone, a
+                    // metadata failure must not replace a playing video with
+                    // an error panel (note 53 item 1).
+                    if (playbackBegunFor != item.id) {
+                        error = YouTube.friendlyError(it)
+                    }
 
                     comments.load(item.id)
                 }

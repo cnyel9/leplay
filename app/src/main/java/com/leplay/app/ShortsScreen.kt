@@ -140,6 +140,8 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -148,7 +150,7 @@ import kotlin.math.absoluteValue
 
 
 @Stable
-private class ShortsFeedState(
+class ShortsFeedState(
     private val scope: kotlinx.coroutines.CoroutineScope,
     private val seed: VideoItem? = null,
 ) {
@@ -239,6 +241,7 @@ fun ShortsScreen(
     onSearch: () -> Unit,
     bottomInset: Dp = 0.dp,
     startItem: VideoItem? = null,
+    sharedFeed: ShortsFeedState? = null,
     active: Boolean = true,
     onOpenChannel: (String) -> Unit = {},
     onCommentsOpenChange: (Boolean) -> Unit = {},
@@ -272,7 +275,9 @@ fun ShortsScreen(
             }
         }
     }
-    val feed = remember(startItem?.id) { ShortsFeedState(scope, startItem) }
+    // The tab instance receives the app-level feed (note 53 item 4) so its
+    // list survives tab switches; seeded overlays keep a private feed.
+    val feed = sharedFeed ?: remember(startItem?.id) { ShortsFeedState(scope, startItem) }
     LaunchedEffect(feed) { feed.load(context) }
 
     val pager = rememberPagerState(pageCount = { feed.videos.size })
@@ -496,8 +501,10 @@ fun ShortsScreen(
     // preload manager. It buffers the first seconds of each source in rank order;
     // a swipe then adopts that wrapped source instead of rebuilding it.
     LaunchedEffect(feed.videos, page) {
-        if (GlassSettings.liteMode) return@LaunchedEffect
-        val upcoming = feed.videos.drop(page + 1).take(5)
+        // Note 53 item 9: Lite Mode keeps a small preload window (2 ahead)
+        // instead of none; weak phones are exactly the ones that cannot
+        // afford a full stream resolve on every swipe.
+        val upcoming = feed.videos.drop(page + 1).take(if (GlassSettings.liteMode) 2 else 5)
         val keep = upcoming.mapTo(HashSet()) { it.id }
         feed.videos.getOrNull(page)?.let { keep.add(it.id) }
         preload.setCurrentPlayingIndex(page)
@@ -505,12 +512,20 @@ fun ShortsScreen(
         if (upcoming.isEmpty()) return@LaunchedEffect
 
         withContext(Dispatchers.IO) { upcoming.forEach { StreamCache.prefetch(it.id) } }
-        upcoming.forEachIndexed { index, item ->
-            if (preload.has(item.id)) return@forEachIndexed
-            val loaded = withContext(Dispatchers.IO) {
-                runCatching { StreamCache.getOrLoad(item.id) }.getOrNull()
-            } ?: return@forEachIndexed
-            val source = shortsSource(context, loaded, item.id) ?: return@forEachIndexed
+        // Resolve the upcoming streams in parallel instead of one after
+        // another; only the cheap source assembly and the preload hand-off
+        // stay sequential here.
+        val resolved = upcoming.mapIndexed { index, item ->
+            async(Dispatchers.IO) {
+                if (preload.has(item.id)) null
+                else runCatching { StreamCache.getOrLoad(item.id) }.getOrNull()
+                    ?.let { info -> Triple(item, index, info) }
+            }
+        }.awaitAll()
+        resolved.forEach { entry ->
+            val (item, index, info) = entry ?: return@forEach
+            if (preload.has(item.id)) return@forEach
+            val source = shortsSource(context, info, item.id) ?: return@forEach
             preload.prepare(item.id, source, page + 1 + index)
         }
     }

@@ -18,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap
 object PlayerFallback {
     private const val TAG = "PlayerFallback"
     private const val CACHE_MS = 3 * 60 * 1000L
+    private const val BUDGET_MS = 15_000L
 
 
     private class Cached(val at: Long, val answer: JSONObject)
@@ -67,7 +68,10 @@ object PlayerFallback {
     }
 
     private fun fetchFallback(videoId: String): JSONObject? {
-
+        // Note 53 item 5: the chain gets a total budget. Five sequential
+        // full player requests at the raw timeouts could hold one tap for
+        // minutes; past the budget the caller fails fast instead.
+        val startedAt = System.currentTimeMillis()
 
         if (Account.signedIn) {
             runCatching { InnerTube.playerResponse(videoId) }
@@ -132,6 +136,10 @@ object PlayerFallback {
         )
 
         for (cfg in clients) {
+            if (System.currentTimeMillis() - startedAt > BUDGET_MS) {
+                Log.w(TAG, "Fallback budget exhausted for $videoId before ${cfg.name}")
+                return null
+            }
             val answer = runCatching { ask(videoId, cfg) }
                 .onFailure { Log.w(TAG, "Fallback ${cfg.name} request failed for $videoId", it) }
                 .getOrNull() ?: continue
@@ -244,7 +252,7 @@ object PlayerFallback {
             }
             .build()
 
-        Net.client.newCall(request).execute().use { response ->
+        Net.apiClient.newCall(request).execute().use { response ->
             check(response.isSuccessful) { "HTTP ${response.code}" }
             return JSONObject(response.body!!.string())
         }

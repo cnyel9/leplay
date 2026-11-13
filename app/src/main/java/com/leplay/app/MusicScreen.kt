@@ -216,15 +216,15 @@ class MusicFeedState(private val scope: CoroutineScope) {
                         } else emptyList()
                     }
 
+                    // Note 53 item 4: publish each section as soon as its
+                    // own load lands instead of holding the shelves hostage
+                    // until the slowest of the three finishes.
                     val fetchedHome = homeDeferred.await()
-                    val fetchedHistory = historyDeferred.await()
-                    val fetchedLiked = likedDeferred.await()
-
                     shelves = fetchedHome?.shelves ?: emptyList()
                     chips = fetchedHome?.chips ?: emptyList()
                     homeContinuation = fetchedHome?.continuation
-                    recentPlays = fetchedHistory
-                    likedTracks = fetchedLiked
+                    recentPlays = historyDeferred.await()
+                    likedTracks = likedDeferred.await()
                 }
             } catch (t: Throwable) {
                 error = t.message ?: I18n.t("music_load_error", "Failed to load YouTube Music")
@@ -239,6 +239,7 @@ class MusicFeedState(private val scope: CoroutineScope) {
 fun MusicScreen(
     lib: LibraryData,
     contentPadding: PaddingValues,
+    state: MusicFeedState,
     onOpen: (VideoItem) -> Unit,
     onSearch: () -> Unit,
     onAccount: () -> Unit,
@@ -251,7 +252,6 @@ fun MusicScreen(
     scrollToTop: Int = 0,
 ) {
     val scope = rememberCoroutineScope()
-    val state = remember { MusicFeedState(scope) }
 
 
     val listState = remember { androidx.compose.foundation.lazy.LazyListState() }
@@ -853,7 +853,7 @@ fun MusicTrackOptionsSheet(
                 ) {
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
-                            .data(highResMusicThumbnail(track.thumbnail) ?: sharpenFeedThumbnail(null, track.id))
+                            .data(highResMusicThumbnail(track.thumbnail, edge = 226) ?: sharpenFeedThumbnail(null, track.id))
                             .crossfade(!GlassSettings.liteMode)
                             .build(),
                         contentDescription = track.title,
@@ -1023,7 +1023,7 @@ private fun MusicShelfCard(
         ) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(highResMusicThumbnail(item.thumbnail))
+                    .data(highResMusicThumbnail(item.thumbnail, edge = 512))
                     .crossfade(!GlassSettings.liteMode)
                     .build(),
                 contentDescription = item.title,
@@ -1088,7 +1088,7 @@ private fun MusicTrackSquareCard(
         ) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(highResMusicThumbnail(video.thumbnail) ?: sharpenFeedThumbnail(null, video.id))
+                    .data(highResMusicThumbnail(video.thumbnail, edge = 512) ?: sharpenFeedThumbnail(null, video.id))
                     .crossfade(!GlassSettings.liteMode)
                     .build(),
                 contentDescription = video.title,
@@ -1539,7 +1539,7 @@ private fun MusicMixScreen(
                 ) {
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
-                            .data(highResMusicThumbnail(item.thumbnail) ?: sharpenFeedThumbnail(null, item.videoId.orEmpty()))
+                            .data(highResMusicThumbnail(item.thumbnail, edge = 320) ?: sharpenFeedThumbnail(null, item.videoId.orEmpty()))
                             .crossfade(!GlassSettings.liteMode)
                             .build(),
                         contentDescription = item.title,
@@ -1677,7 +1677,7 @@ private fun MusicShelfSongRow(
         ) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(highResMusicThumbnail(item.thumbnail) ?: item.videoId?.let { sharpenFeedThumbnail(null, it) })
+                    .data(highResMusicThumbnail(item.thumbnail, edge = 226) ?: item.videoId?.let { sharpenFeedThumbnail(null, it) })
                     .crossfade(!GlassSettings.liteMode)
                     .build(),
                 contentDescription = item.title,
@@ -1756,7 +1756,7 @@ private fun MusicMixSongRow(
         ) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(highResMusicThumbnail(song.thumbnail) ?: sharpenFeedThumbnail(null, song.id))
+                    .data(highResMusicThumbnail(song.thumbnail, edge = 226) ?: sharpenFeedThumbnail(null, song.id))
                     .crossfade(!GlassSettings.liteMode)
                     .build(),
                 contentDescription = song.title,

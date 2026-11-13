@@ -280,6 +280,8 @@ object YouTube {
                 }
             }
         }
+        val relatedList = info.relatedItems.filterIsInstance<StreamInfoItem>()
+            .mapNotNull { it.toVideoItem() }
         VideoDetails(
             item = VideoItem(
                 id = id,
@@ -300,9 +302,7 @@ object YouTube {
             likes = info.likeCount,
             subscribers = info.uploaderSubscriberCount,
             verified = runCatching { info.isUploaderVerified }.getOrDefault(false),
-            related = info.relatedItems.filterIsInstance<StreamInfoItem>().mapNotNull { it.toVideoItem() }.let { list ->
-                if (list.isNotEmpty()) list else fallbackRelated.first
-            },
+            related = if (relatedList.isNotEmpty()) relatedList else fallbackRelated.first,
             playable = picked.isPlayable,
             quality = picked.playedHeight?.let { "${it}p${if (picked.hdr) " HDR" else ""}" }
                 ?: if (isLive) "Live" else null,
@@ -310,7 +310,12 @@ object YouTube {
             hdrQualities = StreamSelection.hdrHeights(info),
             aspect = (if (picked.usesSeparate) picked.video else picked.muxed)
                 ?.takeIf { it.width > 0 && it.height > 0 }?.let { it.width.toFloat() / it.height },
-            relatedNext = fallbackRelated.second,
+            // Note 53 item 2: when NewPipe already delivered related items,
+            // do NOT force the fallback just to harvest its continuation
+            // token; PlayerState.loadMoreRelated fetches that first page
+            // lazily when the user actually pages. The fallback is only
+            // paid for when its items are actually used above.
+            relatedNext = if (relatedList.isNotEmpty()) null else fallbackRelated.second,
         )
     }
 

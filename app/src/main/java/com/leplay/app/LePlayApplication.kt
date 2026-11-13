@@ -54,15 +54,12 @@ class LePlayApplication : Application(), ImageLoaderFactory {
         SearchHistory.init(this)
         Downloads.init(this)
 
-        getSystemService(android.net.ConnectivityManager::class.java)?.registerDefaultNetworkCallback(
-            object : android.net.ConnectivityManager.NetworkCallback() {
-                private var last: android.net.Network? = null
-                override fun onAvailable(network: android.net.Network) {
-                    if (last != null && last != network) StreamCache.invalidateAll()
-                    last = network
-                }
-            },
-        )
+        // Note 53 item 6: the resolved-stream cache is intentionally NOT
+        // wiped on network changes anymore. Switching WiFi to data used to
+        // throw away every resolved stream, so even a video played minutes
+        // earlier paid a full extraction again. Stale URLs are handled by
+        // the playback recovery path, which re-resolves only the one video
+        // that actually fails.
     }
 
 

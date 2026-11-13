@@ -27,6 +27,20 @@ object Net {
             .build()
     }
 
+    /**
+     * API-only twin of [client] with a total call deadline (0.1.2, note 53
+     * item 5). Shares the pool and dispatcher, but a single InnerTube or
+     * extractor request can no longer hang for the full connect+read
+     * budget multiplied by retries: it fails within ~20s and the caller
+     * can surface an error. Media playback and downloads keep using
+     * [client], where a call deadline would break long transfers.
+     */
+    val apiClient: OkHttpClient by lazy {
+        client.newBuilder()
+            .callTimeout(20, TimeUnit.SECONDS)
+            .build()
+    }
+
 
     @Volatile private var mediaHost: String? = null
 
@@ -137,6 +151,6 @@ class NewPipeDownloader private constructor(private val client: OkHttpClient) : 
     }
 
     companion object {
-        val instance: NewPipeDownloader by lazy { NewPipeDownloader(Net.client) }
+        val instance: NewPipeDownloader by lazy { NewPipeDownloader(Net.apiClient) }
     }
 }

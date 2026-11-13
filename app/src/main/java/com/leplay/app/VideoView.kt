@@ -662,7 +662,7 @@ fun VideoContent(
         val enabled = controlsVisible && interactive
 
         AnimatedVisibility(
-            visible = !scrubbing && !controlsVisible && (state.isBuffering || (state.loading && state.details == null)),
+            visible = !scrubbing && !controlsVisible && (state.isBuffering || (state.loading && state.details == null && !state.firstFrameRendered)),
             enter = if (GlassSettings.liteMode) fadeIn(snap()) else fadeIn(tween(150, easing = Motion.Emphasized)),
             exit = if (GlassSettings.liteMode) fadeOut(snap()) else fadeOut(tween(150, easing = Motion.Emphasized)),
             modifier = Modifier.align(Alignment.Center),
@@ -816,7 +816,7 @@ fun VideoContent(
                     )
                     MorphPlayButton(
                         playing = state.isPlaying,
-                        buffering = state.isBuffering || (state.loading && state.details == null),
+                        buffering = state.isBuffering || (state.loading && state.details == null && !state.firstFrameRendered),
                         size = clusterPlay,
 
                         container = Color.Transparent,
@@ -1038,7 +1038,7 @@ fun AudioOnlyStage(
                     TonalSkip(Icons.Rounded.Replay10, I18n.t("back_10_seconds", "Back 10 seconds"), interactive, size = tonalSize) { state.seekBy(-10_000) }
                     MorphPlayButton(
                         playing = state.isPlaying,
-                        buffering = state.isBuffering || (state.loading && state.details == null),
+                        buffering = state.isBuffering || (state.loading && state.details == null && !state.firstFrameRendered),
                         size = stagePlay,
                         container = c.primary,
                         content = c.onPrimary,
