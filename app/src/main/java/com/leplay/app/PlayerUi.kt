@@ -368,6 +368,7 @@ fun PlayerScreen(
                     dominantColor = dominantColor,
                     top = top,
                     bottom = bottom,
+                    morphProgress = p,
                 )
             }
         } else {
@@ -1306,6 +1307,7 @@ fun BitChordMusicPlayer(
     dominantColor: Color,
     top: androidx.compose.ui.unit.Dp,
     bottom: androidx.compose.ui.unit.Dp,
+    morphProgress: Float = 1f,
 ) {
     val c = MaterialTheme.colorScheme
     val item = state.current ?: return
@@ -1331,6 +1333,16 @@ fun BitChordMusicPlayer(
         animationSpec = if (rememberReducedMotion() || GlassSettings.liteMode) snap() else spring(dampingRatio = 0.7f, stiffness = 400f),
         label = "album_scale",
     )
+    // Note 55 (0.1.4): expand/minimize used to fade the whole page in
+    // uniformly over the morph, which read as flat. The sections now
+    // stage in as pure functions of the morph progress: the artwork
+    // grows into place first, the header settles from the top, then
+    // the title and the transport rise last. Minimize and mid-drag
+    // states mirror the same motion in reverse for free.
+    val headerP = ramp(morphProgress, 0.55f)
+    val artP = ramp(morphProgress, 0.30f, 0.95f)
+    val bodyP = ramp(morphProgress, 0.45f)
+    val controlsP = ramp(morphProgress, 0.60f)
     // TV: Material IconButtons have no visible focus by default, so they
     // get the shared focus ring; the play button takes the initial focus
     // so the remote lands somewhere predictable (ShortsScreen pattern).
@@ -1390,7 +1402,11 @@ fun BitChordMusicPlayer(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
+                    .height(56.dp)
+                    .graphicsLayer {
+                        alpha = headerP
+                        translationY = lerpF(-18f, 0f, headerP)
+                    },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onCollapse, modifier = tvRing) {
@@ -1451,8 +1467,10 @@ fun BitChordMusicPlayer(
                         .fillMaxWidth(0.92f)
                         .aspectRatio(1f)
                         .graphicsLayer {
-                            scaleX = albumScale
-                            scaleY = albumScale
+                            val growth = lerpF(0.84f, 1f, artP)
+                            scaleX = albumScale * growth
+                            scaleY = albumScale * growth
+                            translationY = lerpF(36f, 0f, artP)
                         }
                         .shadow(
                             elevation = 30.dp,
@@ -1504,7 +1522,12 @@ fun BitChordMusicPlayer(
 
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        alpha = bodyP
+                        translationY = lerpF(24f, 0f, bodyP)
+                    },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
@@ -1563,14 +1586,20 @@ fun BitChordMusicPlayer(
                     activeTrackColor = c.onSurface,
                     inactiveTrackColor = c.onSurface.copy(alpha = 0.2f),
                 ),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        alpha = controlsP
+                        translationY = lerpF(16f, 0f, controlsP)
+                    },
             )
 
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
+                    .padding(horizontal = 4.dp)
+                    .graphicsLayer { alpha = controlsP },
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
@@ -1591,7 +1620,12 @@ fun BitChordMusicPlayer(
 
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        alpha = controlsP
+                        translationY = lerpF(20f, 0f, controlsP)
+                    },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -1676,7 +1710,8 @@ fun BitChordMusicPlayer(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = 8.dp)
+                        .graphicsLayer { alpha = controlsP },
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
