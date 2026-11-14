@@ -209,7 +209,11 @@ fun VideoContent(
         } else if (!state.isPlaying || TvMode.isTv) {
             centerReady = true
         } else {
-            delay(1_000)
+            // 500ms since 0.1.3 (note 54, rizkyckz): the 0.0.9 full-second
+            // delay felt sluggish; half a second still keeps the center
+            // cluster from flashing during a double-tap seek and matches
+            // the stock app's timing.
+            delay(500)
             centerReady = true
         }
     }
