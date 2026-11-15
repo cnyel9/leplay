@@ -260,6 +260,7 @@ private class StreamRecoverer(
     private val main = Handler(Looper.getMainLooper())
     private var lastId: String? = null
     private var lastPositionMs = 0L
+    private var attempts = 0
 
     override fun onPlayerError(error: PlaybackException) {
         if (error.errorCode != PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) return
@@ -268,16 +269,23 @@ private class StreamRecoverer(
         if (item.localConfiguration?.uri?.scheme == "file") return
         val id = item.mediaId
         val position = player.currentPosition
-        if (id == lastId && position < lastPositionMs + PROGRESS_MS) {
-            Log.w("LePlay", "stream refused again for $id at ${position / 1000}s; giving up")
+        // Note 57 option A (0.1.6-test1): recovery used to give up after a
+        // single re-extract when the same video failed again inside the
+        // progress window. It now counts attempts per video: up to
+        // MAX_ATTEMPTS re-extracts with a growing pause, and the counter
+        // only resets once playback genuinely progresses past the window.
+        attempts = if (id == lastId && position < lastPositionMs + PROGRESS_MS) attempts + 1 else 1
+        if (attempts > MAX_ATTEMPTS) {
+            Log.w("LePlay", "stream refused again for $id at ${position / 1000}s; giving up after $MAX_ATTEMPTS recoveries")
             return
         }
         lastId = id
         lastPositionMs = position
-        Log.i("LePlay", "stream refused for $id; re-extracting and resuming at ${position / 1000}s")
+        Log.i("LePlay", "stream refused for $id; re-extracting (attempt $attempts/$MAX_ATTEMPTS) and resuming at ${position / 1000}s")
         StreamRecovery.failed = null
         StreamRecovery.recovering = id
         StreamCache.invalidate(id)
+        main.postDelayed({
         resolver.execute {
             val result = runCatching { StreamCache.getOrLoad(id) }
             main.post {
@@ -292,6 +300,7 @@ private class StreamRecoverer(
                     }
             }
         }
+        }, (attempts - 1) * RETRY_DELAY_MS)
     }
 
     
@@ -308,6 +317,8 @@ private class StreamRecoverer(
 
     private companion object {
         const val PROGRESS_MS = 30_000L
+        const val MAX_ATTEMPTS = 3
+        const val RETRY_DELAY_MS = 1_500L
     }
 }
 

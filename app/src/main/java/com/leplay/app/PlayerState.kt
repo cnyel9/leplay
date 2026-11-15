@@ -270,6 +270,7 @@ class PlayerState(private val scope: CoroutineScope) {
                 if (failed != null && failed.first == current?.id) {
                     error = failed.second
                     isBuffering = false
+                    scheduleAutoRetry()
                 }
             }
         }
@@ -362,6 +363,16 @@ class PlayerState(private val scope: CoroutineScope) {
      *  startPlayback so a manual retry resumes where the stream died
      *  instead of the persisted resume point. */
     private var pendingRetryPositionMs: Long? = null
+
+    // Note 57 (0.1.6-test1): when a refused stream still reaches the
+    // error panel, the panel used to sit there until the user tapped
+    // Retry. The same retry() now fires on its own with a growing
+    // pause, so the error usually clears itself; the manual button
+    // stays for when the automatic attempts run out.
+    private var autoRetryJob: Job? = null
+    private var autoRetryForId: String? = null
+    private var autoRetryAttempts = 0
+    private var autoRetryPositionMs = 0L
 
 
 
@@ -1428,6 +1439,27 @@ class PlayerState(private val scope: CoroutineScope) {
     }
 
 
+    private fun scheduleAutoRetry() {
+        val item = current ?: return
+        // A different video, or real progress past the point where the
+        // stream died, earns a fresh set of attempts.
+        if (autoRetryForId != item.id || positionMs > autoRetryPositionMs + AUTO_RETRY_PROGRESS_MS) {
+            autoRetryForId = item.id
+            autoRetryAttempts = 0
+        }
+        autoRetryPositionMs = positionMs
+        if (autoRetryAttempts >= AUTO_RETRY_DELAYS_MS.size) return
+        autoRetryJob?.cancel()
+        val delayMs = AUTO_RETRY_DELAYS_MS[autoRetryAttempts]
+        autoRetryJob = scope.launch {
+            delay(delayMs)
+            if (current?.id == item.id && error != null) {
+                autoRetryAttempts++
+                retry()
+            }
+        }
+    }
+
     fun retry() {
         val item = current ?: return
         // Resume from the exact live position instead of the persisted
@@ -1712,6 +1744,7 @@ class PlayerState(private val scope: CoroutineScope) {
                 PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> I18n.t("error_stream_refused", "YouTube refused the stream. Try again.")
                 else -> I18n.t("error_unplayable", "This video couldn't be played.")
             }
+            if (e.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) scheduleAutoRetry()
         }
     }
 
@@ -1804,3 +1837,8 @@ fun rememberPlayerState(): PlayerState {
 enum class PlayerSheet { Quality, Comments, Queue, Settings, Speed, Audio, Subtitles }
 
 private const val TAG = "LePlay"
+
+// Note 57 (0.1.6-test1): automatic Retry attempts for a refused stream,
+// fired by PlayerState.scheduleAutoRetry with these growing pauses.
+private val AUTO_RETRY_DELAYS_MS = longArrayOf(1_500L, 4_000L, 9_000L)
+private const val AUTO_RETRY_PROGRESS_MS = 30_000L

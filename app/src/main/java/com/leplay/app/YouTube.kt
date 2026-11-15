@@ -451,9 +451,25 @@ object YouTube {
 
 
 object StreamCache {
-    private const val MAX_AGE_MS = 4 * 60 * 60 * 1000L
-    private class Entry(val info: StreamInfo, val loadedAt: Long)
+    private const val MAX_AGE_MS = 2 * 60 * 60 * 1000L
+    private class Entry(val info: StreamInfo, val expiresAtMs: Long)
     private val entries = ConcurrentHashMap<String, Entry>()
+
+    // Note 57 option C (0.1.6-test1): entries used to live a flat 4 hours.
+    // googlevideo URLs carry their own expire timestamp and are bound to
+    // the session/IP that minted them, so an entry now dies at the URL's
+    // own expiry (minus a safety margin) or after MAX_AGE_MS, whichever
+    // comes first. Stale URLs were a direct source of "YouTube refused
+    // the stream" errors, especially on mobile networks whose address
+    // changes under a live cache entry.
+    private fun store(id: String, info: StreamInfo) {
+        val now = System.currentTimeMillis()
+        var expiry = now + MAX_AGE_MS
+        val url = runCatching { StreamSelection.pick(info).let { p -> (p.video ?: p.muxed)?.content } }.getOrNull()
+        val expireSec = url?.let { Regex("[?&]expire=(\\d+)").find(it)?.groupValues?.get(1)?.toLongOrNull() }
+        if (expireSec != null) expiry = minOf(expiry, expireSec * 1000L - 60_000L)
+        entries[id] = Entry(info, expiry)
+    }
 
     
 
@@ -465,7 +481,7 @@ object StreamCache {
     fun invalidateAll() = entries.clear()
 
     fun get(id: String): StreamInfo? =
-        entries[id]?.takeIf { System.currentTimeMillis() - it.loadedAt < MAX_AGE_MS }?.info
+        entries[id]?.takeIf { System.currentTimeMillis() < it.expiresAtMs }?.info
 
     
 
@@ -478,7 +494,7 @@ object StreamCache {
         val mine = FutureTask {
             try {
                 StreamInfo.getInfo(ServiceList.YouTube, YouTube.watchUrl(id)).also {
-                    entries[id] = Entry(it, System.currentTimeMillis())
+                    store(id, it)
                     Net.noteMediaHost(StreamSelection.pick(it).let { p -> (p.video ?: p.muxed)?.content })
                     CaptionTracks.put(id, CaptionTracks.fromStreamInfo(it))
                     if (it.subtitles.isEmpty()) runCatching { CaptionTracks.load(id) }
@@ -488,7 +504,7 @@ object StreamCache {
 
                     entries.remove(id)
                     StreamInfo.getInfo(ServiceList.YouTube, YouTube.watchUrl(id)).also {
-                        entries[id] = Entry(it, System.currentTimeMillis())
+                        store(id, it)
                         Net.noteMediaHost(StreamSelection.pick(it).let { p -> (p.video ?: p.muxed)?.content })
                         CaptionTracks.put(id, CaptionTracks.fromStreamInfo(it))
                         if (it.subtitles.isEmpty()) runCatching { CaptionTracks.load(id) }
