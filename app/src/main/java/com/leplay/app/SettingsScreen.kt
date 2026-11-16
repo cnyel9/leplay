@@ -888,6 +888,7 @@ private fun VersionHistoryContent() {
     // the release list from GitHub and force-closed when its LazyColumn was
     // measured inside the scrolling dialog. A static list cannot crash.
     val entries = listOf(
+        Triple("0.1.6", "16 Nov 2026", "The \"YouTube refused the stream\" error now heals itself: recovery re-extracts the stream up to three times before giving up, cached streams follow the real expiry of their URLs instead of living for hours, and if the error still appears the app presses Retry on its own up to three times and resumes where playback stopped, so the message usually disappears without a tap."),
         Triple("0.1.5", "15 Nov 2026", "The player expand and minimize animation now also runs when Liquid Glass is off (the black theme): it used to jump instantly because Lite Mode, which is tied to that theme, suppressed it along with the other animations. The system reduce-motion setting is still respected, and Lite Mode still calms the other animations as before."),
         Triple("0.1.4", "14 Nov 2026", "The Music player now opens and closes with staged motion: the album artwork grows into place while the header, title and controls settle in sequence, following the minimize and expand gesture instead of fading in flat all at once."),
         Triple("0.1.3", "14 Nov 2026", "The center playback buttons now appear 500ms after the other controls instead of a full second, matching the feel of the YouTube app while still never flashing during double-tap seek."),
